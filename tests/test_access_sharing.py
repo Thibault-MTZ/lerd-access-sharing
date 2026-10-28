@@ -57,5 +57,30 @@ class AccessSharingTests(unittest.TestCase):
  def test_remote_api_or_missing_token_refused(self):
   for env in ({},{'LERD_API_URL':'https://example.invalid','LERD_API_TOKEN':'fixture'}):
    with self.assertRaises(ReadError):read_native(env)
+ def test_redirect_never_receives_the_native_token(self):
+  captured=[]
+  class Capture(BaseHTTPRequestHandler):
+   def log_message(self,*a):pass
+   def do_GET(self):
+    captured.append(self.headers.get('X-Lerd-Plugin-Token'))
+    self.send_response(200);self.end_headers()
+  capture=ThreadingHTTPServer(('127.0.0.1',0),Capture)
+  class Redirect(BaseHTTPRequestHandler):
+   def log_message(self,*a):pass
+   def do_GET(self):
+    self.send_response(302)
+    self.send_header('Location','http://127.0.0.1:'+str(capture.server_port)+'/capture')
+    self.end_headers()
+  redirect=ThreadingHTTPServer(('127.0.0.1',0),Redirect)
+  threads=[threading.Thread(target=s.serve_forever,daemon=True) for s in (capture,redirect)]
+  for thread in threads:thread.start()
+  try:
+   with self.assertRaises(ReadError):
+    read_native({'LERD_API_URL':'http://127.0.0.1:'+str(redirect.server_port),
+                 'LERD_API_TOKEN':secrets.token_urlsafe(24)})
+   self.assertEqual(captured,[])
+  finally:
+   for server in (capture,redirect):server.shutdown();server.server_close()
+   for thread in threads:thread.join()
 
 if __name__=='__main__':unittest.main()

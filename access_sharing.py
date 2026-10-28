@@ -8,6 +8,11 @@ import urllib.request
 class ReadError(RuntimeError):
     """Erreur publique volontairement dépourvue de jeton ou de corps distant."""
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self,request,fp,code,message,headers,new_url):
+        # Un jeton local ne doit jamais suivre une redirection, même locale.
+        return None
+
 def safe_url(value):
     if not isinstance(value,str) or not value:return None
     try:
@@ -73,7 +78,8 @@ def read_native(environ=None):
     request=urllib.request.Request(base+'/api/sites',method='GET',
         headers={'X-Lerd-Plugin-Token':token,'Accept':'application/json'})
     try:
-        with urllib.request.urlopen(request,timeout=10) as response:
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+        with opener.open(request,timeout=10) as response:
             raw=response.read(4*1024*1024+1)
         if len(raw)>4*1024*1024:raise ReadError('Réponse LERD trop volumineuse.')
         data=json.loads(raw)
