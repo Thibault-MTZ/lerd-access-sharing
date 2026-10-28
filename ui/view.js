@@ -213,9 +213,11 @@
    $('dialog-error').textContent='';$('confirm-dialog').close();$('policy-status').textContent='Politique enregistrée. Le statut effectif doit être confirmé par LERD.';
    // Le secret quitte le DOM dès la fin de la requête, succès ou erreur.
    clearCredentials();
+   $('policy-dialog').close();
    await refresh();
-   const row=snapshot.shares.find(item=>item.project===target.project&&(item.branch||'')===target.branch);
-   if(row){$('policy-dialog').close();await openPolicy(row,returnFocus)}
+   $('status').textContent='Règles enregistrées et liste actualisée.';
+   const focusTarget=[...$('rows').querySelectorAll('button')].find(button=>button.getAttribute('aria-label')===returnFocus?.getAttribute('aria-label'));
+   (focusTarget||$('refresh')).focus();
   }catch(error){clearCredentials();$('confirm-dialog').close();$('dialog-error').textContent=customLerdMessage(error);$('dialog-error').focus?.()}
   finally{$('apply-policy').disabled=false}
  }
