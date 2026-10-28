@@ -22,7 +22,8 @@ class AccessSharingTests(unittest.TestCase):
                   'public_share_url':'https://demo-agent-v3.example.invalid'}]}])
   self.assertEqual(data['active_count'],2)
   self.assertEqual(data['shares'][0]['port'],9100)
-  self.assertEqual(data['shares'][1]['branch'],'agent/v3')
+  self.assertEqual(data['shares'][1]['branch'],'agent-v3')
+  self.assertEqual(data['shares'][1]['git_branch'],'agent/v3')
   self.assertEqual(data['shares'][1]['kind'],'worktree')
  def test_only_whitelisted_fields_leave_backend(self):
   payload=normalize([{'name':'demo','path':'/private/example','api_key':'fixture',

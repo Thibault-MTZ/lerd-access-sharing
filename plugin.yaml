@@ -1,8 +1,8 @@
 api_version: 1
 name: lerd-access-sharing
 lerd: ">=1.38"
-version: 0.1.0-beta.1
-description: Vue en lecture seule des partages natifs LERD
+version: 0.2.0-beta.1
+description: Partages natifs LERD et protections IP, Basic Auth et requêtes
 docs: DOCS.md
 icon: ui/icon.svg
 commands:
@@ -13,8 +13,15 @@ api:
   - path: shares
     methods: [GET]
     run: bin/shares
+  - path: policy
+    methods: [GET, POST]
+    run: bin/policy
+    loopback_only: true
 ui:
   page:
     title: Accès et partages
     icon: ui/icon.svg
+    entry: ui/index.html
+  site_tab:
+    title: Accès
     entry: ui/index.html

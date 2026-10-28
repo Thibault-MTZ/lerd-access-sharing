@@ -1,13 +1,41 @@
-# Accès et partages LERD — V1
+# Accès et partages LERD
 
 Plugin natif local, fondé sur le squelette produit par `lerd plugin new`.
 Le dépôt est indépendant de toute configuration d’hébergement.
 
-La V1 vise une **vue en lecture seule** des partages de sites et de worktrees.
-Elle ne fournit pas de pare-feu, de contrôle IP, d’authentification ni de limite
-de requêtes. Elle ne remplace pas les protections d’une passerelle existante.
+## Historique du démarrage
 
-## Fonctions de la bêta 0.1.0
+Ce projet est né comme un test personnel pour mon Homelab. Avec l'arrivée du
+système de plugins de LERD, j'ai commencé à en faire un plugin réutilisable,
+indépendant de ma configuration. Je souhaite le proposer prochainement à la
+communauté, après avoir avancé les tests et stabilisé une première bêta.
+
+Le tout premier prototype a été préparé localement avant son intégration dans ce
+dépôt. Les premières étapes ont ensuite été regroupées rapidement en commits pour
+retracer une suite logique : squelette, lecture native, tests, corrections et
+interface. Ce début d'historique présente les jalons du prototype ; il ne prétend
+pas être un relevé exhaustif de chaque modification locale. La suite est suivie
+dans Git avec des changements testés et cohérents.
+
+La version de développement **0.2.0-beta.1** ajoute la configuration des protections
+par site et worktree : IP autorisées, Basic Auth, combinaison des deux, fermeture
+et limite de requêtes par client. Le proxy **LERD** applique les règles, y compris
+sur les ports directs ; le plugin ne dépend ni de Gestion ni d'un Caddy local.
+
+**Compatibilité : cette fonction nécessite une version LERD exposant
+`/api/share-access`, développée dans [le fork LERD](https://github.com/Thibault-MTZ/lerd).
+Elle ne fait pas encore partie de LERD officiel.** Sans cette capacité, l'interface
+signale l'incompatibilité et ne confirme aucune protection. La version0.1 reste
+un inventaire en lecture seule. Valider la nouvelle version avant de retirer une
+passerelle existante.
+
+La page **Accès et partages** et l'onglet **Accès** d'un site proposent les règles
+de la cible exacte. Une application explicite et un contrôle de révision évitent
+d'écraser une modification concurrente. Les mots de passe sont transmis à LERD
+pour hachage et ne sont jamais renvoyés à l'interface. La limite de requêtes produit
+une réponse429 ; elle ne limite pas le débit de téléchargement.
+
+## Inventaire natif conservé
 
 - Page native **Accès et partages**, recherche et filtre des partages actifs.
 - Sites et worktrees, branche Git, mode LAN/public/fermé et URL native.
@@ -29,9 +57,13 @@ lerd plugin list
 lerd lerd-access-sharing:shares
 ```
 
+Exécuter aussi `node tests/test_ui.cjs` pour le contrôle de l'interface en développement.
 Rechargez le tableau de bord LERD pour voir la page. Le plugin utilise uniquement
 Python 3 standard et le pont d’interface du squelette natif. Il n’installe aucun
-service ou binaire LERD modifié.
+service ou binaire LERD modifié lui-même. Le cœur compatible doit être installé
+séparément. Une installation copie les fichiers : un `git pull` ne met pas la
+copie installée à jour ; utiliser les commandes natives de retrait et de
+réinstallation pour la remplacer. Aucun projet n'est supprimé par ce retrait.
 
 Le dépôt impose les fins de ligne LF, y compris lors d’un export Git depuis
 Windows : les exécutables natifs ne doivent jamais contenir de shebang CRLF.
@@ -40,8 +72,8 @@ Windows : les exécutables natifs ne doivent jamais contenir de shebang CRLF.
 
 L’API fournit une URL publique même pour certains partages **inactifs** : seul
 `public_shared: true` est interprété comme un partage public actif. L’API actuelle
-ne fournit pas le numéro du port public, ni les politiques IP/authentification/
-requêtes de passerelles externes : la page l’indique, sans les inventer.
+ne fournit pas le numéro du port public. Les règles sont lues séparément depuis
+`/api/share-access` ; elles ne décrivent pas les politiques d'une passerelle externe.
 
 Les tunnels externes ne sont pas couverts. La présence d’un partage natif ne
 prouve pas son accessibilité Internet, la configuration DNS/TLS ou la sécurité
@@ -50,8 +82,10 @@ sont distincts.
 
 Les hooks de plugins LERD actuels interviennent après une opération réussie ;
 ils ne constituent pas un point d’interception bloquant des requêtes HTTP.
-Une véritable extension de contrôle d’accès demanderait un contrat natif
-supplémentaire, hors de cette V1.
+L'édition utilise donc un contrat natif distinct, pas ces hooks. Basic Auth doit
+être utilisé à travers HTTPS. La confiance dans les en-têtes d'IP nécessite des
+relais explicitement approuvés dans la configuration LERD ; aucune adresse propre
+à un hébergement n'est codée en dur dans ce plugin.
 
 ## Origine du squelette
 

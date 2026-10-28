@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Lecture et application explicites des règles via l’API native locale."""
+import json
+import os
+from pathlib import Path
+import sys
+import urllib.parse
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from native_policy import PolicyError, native_policy
+
+try:
+    query = urllib.parse.parse_qs(os.environ.get('LERD_QUERY', ''), keep_blank_values=True)
+    site = query.get('site', [os.environ.get('LERD_SITE', '')])[0]
+    branch = query.get('branch', [os.environ.get('LERD_BRANCH', '')])[0]
+    method = os.environ.get('LERD_METHOD', 'GET')
+    if method not in ('GET', 'POST'):
+        raise PolicyError('Méthode non autorisée.')
+    data = None
+    if method == 'POST':
+        body = sys.stdin.buffer.read(65537)
+        if len(body) > 65536:
+            raise PolicyError('Formulaire trop volumineux.')
+        data = json.loads(body)
+    print(json.dumps(native_policy(site, branch, data), ensure_ascii=False))
+except (PolicyError, ValueError) as error:
+    print(str(error) if isinstance(error, PolicyError) else 'Formulaire JSON invalide.', file=sys.stderr)
+    sys.exit(1)

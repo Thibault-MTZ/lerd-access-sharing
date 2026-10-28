@@ -1,25 +1,120 @@
 <!doctype html>
 <html lang="fr">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Accès et partages</title></head>
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Accès et partages</title>
+ <style>
+  .table-scroll{overflow-x:auto}
+  .inventory-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+  #search{flex:1;min-width:min(12rem,100%)}
+  #policy-dialog,#confirm-dialog{box-sizing:border-box;width:min(44rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);max-height:calc(100dvh - 2rem);overflow:hidden}
+  .dialog-shell{display:grid;grid-template-rows:minmax(0,1fr) auto;max-height:calc(100vh - 6rem);max-height:calc(100dvh - 6rem)}
+  .dialog-body{min-width:0;min-height:0;overflow-y:auto}
+  .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:.5rem}
+  .form-field{display:grid;gap:.4rem;min-width:0}
+  .wide-control{box-sizing:border-box;display:block;width:100%;min-height:6rem;resize:vertical}
+  #mode{box-sizing:border-box;width:min(28rem,100%)}
+  #rate,#burst{box-sizing:border-box;width:min(14rem,100%)}
+  .rate-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+  .credential-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:.75rem;align-items:end}
+  @media(max-width:40rem){.credential-row,.rate-grid{grid-template-columns:1fr}.table-scroll table{min-width:38rem}.dialog-actions button{flex:1 1 100%}}
+ </style>
+</head>
 <body>
  <section class="lerd-section">
   <h1>Accès et partages</h1>
-  <p class="lerd-muted">Vue native en lecture seule des sites et worktrees. Pour démarrer ou arrêter un partage, utilisez les menus de partage de LERD.</p>
-  <div class="lerd-toolbar">
+  <p class="lerd-muted">État des partages natifs et protections par site ou worktree. Les changements ne sont enregistrés qu’après votre validation.</p>
+  <div class="lerd-toolbar inventory-toolbar">
    <button id="refresh" class="primary">Actualiser</button>
    <label><input id="active" type="checkbox" checked> Partages actifs uniquement</label>
    <input id="search" type="search" placeholder="Projet ou branche" aria-label="Rechercher un projet ou une branche">
    <span id="count" class="lerd-pill">Chargement…</span>
   </div>
   <p id="status" role="status" class="lerd-muted"></p>
-  <div class="lerd-card flush"><table><thead><tr><th>Projet / branche</th><th>Partage natif</th><th>URL</th><th>Port</th></tr></thead><tbody id="rows"></tbody></table></div>
+  <div class="table-scroll lerd-card flush"><table><thead><tr><th>Projet / branche</th><th>Partage</th><th>URL</th><th>Port</th><th>Protection native</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
   <p id="empty" class="lerd-empty" hidden>Aucun partage ne correspond.</p>
+  <p id="context-note" class="lerd-muted" hidden>Onglet du site : la liste est limitée à cette cible.</p>
   <div class="lerd-card">
-   <h2>Limites de cette V1</h2>
-   <ul id="limits"></ul>
-   <p class="lerd-muted">Ce plugin ne bloque aucune requête et ne fournit pas de contrôle IP, d’authentification ou de limite de requêtes. Conservez vos protections de passerelle. Une URL proposée par LERD ne signifie pas que le partage est actif, ni qu’il est accessible depuis Internet.</p>
+   <p class="lerd-label">Portée des protections</p>
+   <p class="lerd-muted">« Public » décrit le partage natif, pas l’absence de protection. Les règles protègent les ports publics directs de LERD (9300 et suivants) et son entrée commune native. Les partages LAN et les chemins qui ne passent pas par ce proxy natif restent hors de leur portée.</p>
+   <p class="lerd-muted">Une règle affichée comme préparée sur un partage arrêté n’est pas appliquée à un accès actif.</p>
   </div>
  </section>
+
+ <dialog id="policy-dialog" aria-labelledby="dialog-title">
+  <div class="dialog-shell">
+  <section class="dialog-body lerd-section">
+   <h2 id="dialog-title">Protection d’accès</h2>
+   <p id="target-label" class="lerd-muted"></p>
+   <p id="policy-status" role="status" aria-live="polite" class="lerd-pill">En attente de la politique native…</p>
+   <section class="lerd-section">
+    <h3>1. Niveau de protection</h3>
+    <div class="form-field">
+     <label for="mode">Accès au site ou worktree</label>
+     <select id="mode" aria-describedby="mode-help">
+     <option value="closed">Fermé : aucun accès autorisé</option>
+     <option value="public">Public : ouvert à tous</option>
+     <option value="ip">Réseaux autorisés</option>
+     <option value="password">Compte requis</option>
+     <option value="ip_and_password">Réseau autorisé et compte requis</option>
+     <option value="ip_or_password">Réseau autorisé ou compte requis</option>
+     </select>
+    </div>
+    <p id="mode-help" class="lerd-muted">Les options de réseau et de compte apparaissent selon le mode choisi.</p>
+   </section>
+   <section id="networks-field" class="lerd-section" hidden>
+    <h3>2. Réseaux autorisés</h3>
+    <div class="form-field">
+     <label for="networks">Adresses CIDR, une par ligne</label>
+     <textarea id="networks" class="wide-control" rows="4" autocomplete="off" aria-describedby="networks-help" placeholder="192.0.2.0/24&#10;2001:db8::/32"></textarea>
+    </div>
+    <p id="networks-help" class="lerd-muted">Indiquez les IP que LERD voit réellement. Via un relais Internet, il s’agit généralement de l’IP publique du visiteur, pas de son adresse Wi-Fi ou LAN.</p>
+   </section>
+   <section id="accounts-field" class="lerd-section" hidden>
+    <h3>3. Comptes autorisés</h3>
+    <div class="lerd-card">
+     <p class="lerd-label">Comptes configurés</p>
+     <p class="lerd-muted">Les mots de passe existants ne sont jamais affichés. Cochez un compte pour le supprimer.</p>
+     <div id="existing-users"></div>
+    </div>
+    <div class="lerd-card">
+     <p class="lerd-label">Ajouter ou renouveler un compte</p>
+     <div id="credentials"></div>
+     <button id="add-credential" type="button">Ajouter un compte</button>
+    </div>
+   </section>
+   <section class="lerd-section">
+    <h3>Limite de requêtes</h3>
+    <p class="lerd-muted">0 requête/s désactive la limite; le burst définit le volume temporaire accepté.</p>
+    <div class="rate-grid">
+     <div class="form-field"><label for="rate">Requêtes par seconde</label><input id="rate" type="number" min="0" max="100000" step="0.1"></div>
+     <div class="form-field"><label for="burst">Burst</label><input id="burst" type="number" min="1" max="10000" step="1"></div>
+    </div>
+   </section>
+   <div class="lerd-card"><p class="lerd-label">Résumé avant application</p><p id="impact-summary" class="lerd-muted" aria-live="polite"></p></div>
+   <p id="dialog-error" role="alert" aria-live="assertive" tabindex="-1" class="lerd-muted"></p>
+  </section>
+   <div class="dialog-actions lerd-toolbar">
+    <button id="cancel-policy" type="button">Annuler</button>
+    <button id="apply-policy" type="button" class="primary" disabled>Examiner les changements</button>
+   </div>
+  </div>
+ </dialog>
+
+ <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-summary">
+  <div class="dialog-shell">
+  <section class="dialog-body lerd-section">
+   <h2 id="confirm-title">Confirmer l’application</h2>
+   <p id="confirm-target" class="lerd-muted"></p>
+   <div class="lerd-card"><p id="confirm-summary" class="lerd-muted"></p></div>
+   <p id="confirm-warning" class="lerd-pill warn" hidden>Cette modification peut ouvrir l’accès ou supprimer un compte. Vérifiez la cible avant de continuer.</p>
+  </section>
+   <div class="dialog-actions lerd-toolbar">
+    <button id="back-to-policy" type="button">Revenir au formulaire</button>
+    <button id="confirm-apply" type="button" class="primary">Confirmer et enregistrer</button>
+   </div>
+  </div>
+ </dialog>
+
  <script src="lerd.js"></script>
  <script src="view.js"></script>
 </body>

@@ -43,7 +43,8 @@ def normalize(sites):
         visibility='public' if public else 'private' if lan else 'closed'
         public_url=safe_url(node.get('public_share_url'))
         lan_url=safe_url(node.get('lan_share_url'))
-        rows.append({'project':name,'kind':kind,'branch':node.get('git_branch') or node.get('branch') if kind=='worktree' else None,
+        rows.append({'project':name,'kind':kind,'branch':node.get('branch') if kind=='worktree' else None,
+            'git_branch':node.get('git_branch') if kind=='worktree' else None,
             'domain':node.get('domain'),'visibility':visibility,
             'url':public_url if public else lan_url if lan else None,
             'suggested_public_url':public_url,
