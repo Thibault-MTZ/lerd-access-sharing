@@ -29,6 +29,19 @@ def port(value):
         raise ReadError('Port natif invalide dans la réponse LERD.')
     return value
 
+def metadata_text(value):
+    """Un champ descriptif absent ou non textuel reste inconnu."""
+    if not isinstance(value,str):return None
+    value=value.strip()
+    if not value or len(value)>256 or any(ord(char)<32 or ord(char)==127 for char in value):return None
+    return value
+
+def runtime_metadata(site,node,key):
+    # Les versions du worktree priment ; une omission native hérite du parent.
+    if node is not site and key in node and node[key] not in (None,''):
+        return metadata_text(node[key])
+    return metadata_text(site.get(key))
+
 def normalize(sites):
     if not isinstance(sites,list):raise ReadError('Format des sites LERD non reconnu.')
     rows=[]
@@ -44,8 +57,13 @@ def normalize(sites):
         public_url=safe_url(node.get('public_share_url'))
         lan_url=safe_url(node.get('lan_share_url'))
         rows.append({'project':name,'kind':kind,'branch':node.get('branch') if kind=='worktree' else None,
-            'git_branch':node.get('git_branch') if kind=='worktree' else None,
-            'domain':node.get('domain'),'visibility':visibility,
+            'git_branch':metadata_text(node.get('git_branch') if kind=='worktree' else site.get('branch')),
+            'domain':metadata_text(node.get('domain')),
+            # WorktreeResponse expose les versions mais pas d'identifiant framework.
+            'framework':metadata_text(site.get('framework')),
+            'php_version':runtime_metadata(site,node,'php_version'),
+            'node_version':runtime_metadata(site,node,'node_version'),
+            'visibility':visibility,
             'url':public_url if public else lan_url if lan else None,
             'suggested_public_url':public_url,
             # L'API actuelle expose lan_port mais pas le port du proxy public.
@@ -61,7 +79,7 @@ def normalize(sites):
         if not isinstance(worktrees,list):raise ReadError('Format des worktrees non reconnu.')
         for worktree in worktrees:add(site,worktree,'worktree')
     return {'schema_version':1,'read_only':True,'source':'LERD GET /api/sites',
-            'shares':rows,'active_count':sum(row['visibility']!='closed' for row in rows),
+            'shares':rows,'active_count':sum(row['visibility']!='closed' and not row['paused'] for row in rows),
             'limits':['Les contrôles IP, authentification et requêtes ne sont pas exposés par cette API.',
                       'Le port du proxy public n’est pas exposé par la version actuelle de cette API.',
                       'Les tunnels externes ne sont pas couverts par cette vue.']}

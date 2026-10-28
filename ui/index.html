@@ -6,17 +6,20 @@
   .table-scroll{overflow-x:auto}
   .inventory-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
   #search{flex:1;min-width:min(12rem,100%)}
-  #policy-dialog,#confirm-dialog{box-sizing:border-box;width:min(44rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);max-height:calc(100dvh - 2rem);overflow:hidden}
+  #share-filter,#protection-filter,#sort-by{max-width:100%}
+  #policy-dialog,#confirm-dialog,#details-dialog{box-sizing:border-box;width:min(44rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);max-height:calc(100dvh - 2rem);overflow:hidden}
   .dialog-shell{display:grid;grid-template-rows:minmax(0,1fr) auto;max-height:calc(100vh - 6rem);max-height:calc(100dvh - 6rem)}
   .dialog-body{min-width:0;min-height:0;overflow-y:auto}
   .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:.5rem}
   .form-field{display:grid;gap:.4rem;min-width:0}
   .wide-control{box-sizing:border-box;display:block;width:100%;min-height:6rem;resize:vertical}
-  #mode{box-sizing:border-box;width:min(28rem,100%)}
+  #mode,#denial-status{box-sizing:border-box;width:min(28rem,100%)}
   #rate,#burst{box-sizing:border-box;width:min(14rem,100%)}
   .rate-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
   .credential-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:.75rem;align-items:end}
-  @media(max-width:40rem){.credential-row,.rate-grid{grid-template-columns:1fr}.table-scroll table{min-width:38rem}.dialog-actions button{flex:1 1 100%}}
+  .details-grid{display:grid;grid-template-columns:minmax(8rem,.7fr) minmax(0,1.3fr);gap:.5rem 1rem}
+  .details-grid dd{min-width:0;margin:0;overflow-wrap:anywhere}
+  @media(max-width:40rem){.credential-row,.rate-grid,.details-grid{grid-template-columns:1fr}.table-scroll table{min-width:38rem}.dialog-actions button{flex:1 1 100%}}
  </style>
 </head>
 <body>
@@ -25,19 +28,25 @@
   <p class="lerd-muted">État des partages natifs et protections par site ou worktree. Les changements ne sont enregistrés qu’après votre validation.</p>
   <div class="lerd-toolbar inventory-toolbar">
    <button id="refresh" class="primary">Actualiser</button>
-   <label><input id="active" type="checkbox" checked> Partages actifs uniquement</label>
    <input id="search" type="search" placeholder="Projet ou branche" aria-label="Rechercher un projet ou une branche">
+   <select id="share-filter" aria-label="Filtrer par état du partage">
+    <option value="active" selected>Partages actifs</option><option value="all">Tous les états</option><option value="public">Public</option><option value="lan">LAN</option><option value="paused">En pause</option><option value="stopped">Arrêtés</option>
+   </select>
+   <select id="protection-filter" aria-label="Filtrer par protection">
+    <option value="all">Toutes les protections</option><option value="closed">Refus total</option><option value="public">Sans contrôle</option><option value="ip">Filtrage IP</option><option value="password">Compte requis</option><option value="ip_and_password">IP + compte</option><option value="ip_or_password">IP ou compte</option><option value="unreported">Non rapportée</option><option value="unavailable">Indisponible</option><option value="outside">Hors portée</option>
+   </select>
+   <label for="sort-by">Trier par</label>
+   <select id="sort-by"><option value="name">Nom</option><option value="activity">Activité (actifs d’abord)</option><option value="protection">Protection</option></select>
    <span id="count" class="lerd-pill">Chargement…</span>
   </div>
   <p id="status" role="status" class="lerd-muted"></p>
   <div class="table-scroll lerd-card flush"><table><thead><tr><th>Projet / branche</th><th>Partage</th><th>URL</th><th>Port</th><th>Protection native</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
   <p id="empty" class="lerd-empty" hidden>Aucun partage ne correspond.</p>
   <p id="context-note" class="lerd-muted" hidden>Onglet du site : la liste est limitée à cette cible.</p>
-  <div class="lerd-card">
-   <p class="lerd-label">Portée des protections</p>
+  <details class="lerd-card"><summary class="lerd-label">Portée des protections</summary>
    <p class="lerd-muted">« Public » décrit le partage natif, pas l’absence de protection. Les règles protègent les ports publics directs de LERD (9300 et suivants) et son entrée commune native. Les partages LAN et les chemins qui ne passent pas par ce proxy natif restent hors de leur portée.</p>
    <p class="lerd-muted">Une règle affichée comme préparée sur un partage arrêté n’est pas appliquée à un accès actif.</p>
-  </div>
+  </details>
  </section>
 
  <dialog id="policy-dialog" aria-labelledby="dialog-title">
@@ -60,6 +69,17 @@
      </select>
     </div>
     <p id="mode-help" class="lerd-muted">Les options de réseau et de compte apparaissent selon le mode choisi.</p>
+   </section>
+   <section class="lerd-section">
+    <h3>Réponse en cas de refus</h3>
+    <div class="form-field">
+     <label for="denial-status">Code de refus réseau</label>
+     <select id="denial-status" aria-describedby="denial-help">
+      <option value="403">403 · Accès refusé</option>
+      <option value="404">404 · Introuvable</option>
+     </select>
+    </div>
+    <p id="denial-help" class="lerd-muted">Basic Auth conserve le code 401 nécessaire au dialogue d’identification.</p>
    </section>
    <section id="networks-field" class="lerd-section" hidden>
     <h3>2. Réseaux autorisés</h3>
@@ -97,6 +117,16 @@
     <button id="cancel-policy" type="button">Annuler</button>
     <button id="apply-policy" type="button" class="primary" disabled>Examiner les changements</button>
    </div>
+  </div>
+ </dialog>
+
+ <dialog id="details-dialog" aria-labelledby="details-title">
+  <div class="dialog-shell">
+   <section class="dialog-body lerd-section">
+    <h2 id="details-title">Détails de la cible</h2>
+    <dl id="detail-fields" class="details-grid"></dl>
+   </section>
+   <div class="dialog-actions lerd-toolbar"><button id="close-details" type="button">Fermer</button></div>
   </div>
  </dialog>
 

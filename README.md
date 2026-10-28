@@ -17,10 +17,16 @@ interface. Ce début d'historique présente les jalons du prototype ; il ne pré
 pas être un relevé exhaustif de chaque modification locale. La suite est suivie
 dans Git avec des changements testés et cohérents.
 
-La version de développement **0.2.0-beta.1** ajoute la configuration des protections
+La version de développement **0.2.0-beta.2** ajoute la configuration des protections
 par site et worktree : IP autorisées, Basic Auth, combinaison des deux, fermeture
 et limite de requêtes par client. Le proxy **LERD** applique les règles, y compris
 sur les ports directs ; le plugin ne dépend ni de Gestion ni d'un Caddy local.
+
+L'inventaire regroupe les projets et leurs worktrees, avec recherche, filtres,
+tri et détails techniques disponibles dans LERD. Sur un cœur compatible avec
+`ui.share_action`, le menu de partage proxy actif propose **Protection d’accès** :
+il ouvre directement la règle du site ou du worktree sélectionné. Les versions
+sans cette extension conservent la page et l'onglet de site **Accès**.
 
 **Compatibilité : cette fonction nécessite une version LERD exposant
 `/api/share-access`, développée dans [le fork LERD](https://github.com/Thibault-MTZ/lerd).

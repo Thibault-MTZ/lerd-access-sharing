@@ -10,6 +10,7 @@ import urllib.request
 from access_sharing import NoRedirect
 
 MODES = {'closed', 'public', 'ip', 'password', 'ip_and_password', 'ip_or_password'}
+DENIAL_STATUSES = {403, 404}
 
 
 class PolicyError(RuntimeError):
@@ -35,9 +36,15 @@ def rate_config(value):
     return dict(requests_per_second=speed, burst=burst)
 
 
+def denial_status(value=403):
+    if type(value) is not int or value not in DENIAL_STATUSES:
+        raise PolicyError('Code de refus réseau invalide.')
+    return value
+
+
 def validate_update(data):
     known = {'version', 'site', 'branch', 'mode', 'networks', 'users', 'revision',
-             'enforcement', 'rate', 'credentials', 'remove_users'}
+             'enforcement', 'rate', 'credentials', 'remove_users', 'denial_status'}
     if not isinstance(data, dict) or set(data) - known:
         raise PolicyError('Champ de configuration non reconnu.')
     mode = data.get('mode')
@@ -68,8 +75,8 @@ def validate_update(data):
         password = account['password']
         if ':' in name or len(name.encode('utf-8')) > 128 or name in names:
             raise PolicyError('Identifiant invalide ou ajouté plusieurs fois.')
-        if not isinstance(password, str) or not 8 <= len(password.encode('utf-8')) <= 72:
-            raise PolicyError('Le mot de passe doit contenir entre 8 et 72 octets.')
+        if not isinstance(password, str) or not password:
+            raise PolicyError('Le mot de passe ne peut pas être vide.')
         names.add(name)
         accounts.append(dict(username=name, password=password))
     return dict(site=identity(data.get('site'), 'Projet'),
@@ -77,7 +84,8 @@ def validate_update(data):
                 mode=mode, networks=networks, revision=revision,
                 credentials=accounts,
                 remove_users=[identity(name, 'Identifiant') for name in removed],
-                rate=rate_config(data.get('rate')))
+                rate=rate_config(data.get('rate')),
+                denial_status=denial_status(data.get('denial_status', 403)))
 
 
 def clean_response(data):
@@ -86,6 +94,7 @@ def clean_response(data):
     try:
         fields = ('site', 'branch', 'mode', 'networks', 'revision', 'rate')
         base = validate_update({**{key: data[key] for key in fields},
+                                'denial_status': data.get('denial_status', 403),
                                 'credentials': [], 'remove_users': []})
         users = [dict(username=identity(user['username'], 'Identifiant')) for user in data['users']]
     except (KeyError, TypeError):

@@ -17,6 +17,7 @@ try:
             row['access_summary']={
                 'mode':policy['mode'] if policy else 'closed',
                 'rate':policy['rate'] if policy else dict(requests_per_second=0,burst=60),
+                'denial_status':policy.get('denial_status',403) if policy else 403,
                 'revision':policy['revision'] if policy else 0}
         result['limits']=[
             'Les règles natives protègent les partages publics et leurs ports directs ; les partages LAN restent distincts.',

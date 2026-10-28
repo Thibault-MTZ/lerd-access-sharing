@@ -1,18 +1,76 @@
+function groupShares(rows){
+ const groups=new Map();
+ for(const row of rows||[]){
+  if(!row||typeof row.project!=='string'||!row.project)continue;
+  let group=groups.get(row.project);
+  if(!group){group={project:row.project,site:null,worktrees:[]};groups.set(row.project,group)}
+  if(row.kind==='worktree')group.worktrees.push(row);
+  else if(!group.site)group.site=row;
+ }
+ return [...groups.values()];
+}
+function filterGroups(groups,options={}){
+ const query=String(options.query||'').trim().toLocaleLowerCase();
+ const nativeAvailable=options.nativeAccessAvailable===true;
+ const rowMatch=(row,projectMatches)=>{
+  if(options.site&&row.project!==options.site)return false;
+  if(options.site&&(row.branch||'')!==(options.branch||''))return false;
+  if(options.share==='active'&&(row.paused||row.visibility==='closed'))return false;
+  if(options.share==='public'&&(row.paused||row.visibility!=='public'))return false;
+  if(options.share==='lan'&&(row.paused||row.visibility!=='private'))return false;
+  if(options.share==='paused'&&!row.paused)return false;
+  if(options.share==='stopped'&&(row.paused||row.visibility!=='closed'))return false;
+  const policy=row.visibility==='private'?'outside':!nativeAvailable?'unavailable':row.access_policy_reported&&row.access_summary?.mode?row.access_summary.mode:'unreported';
+  if(options.protection&&options.protection!=='all'&&options.protection!==policy)return false;
+  return !query||projectMatches||[row.project,row.branch,row.git_branch].filter(Boolean).join(' ').toLocaleLowerCase().includes(query);
+ };
+ const result=[];
+ for(const group of groups||[]){
+  const projectMatches=Boolean(query)&&group.project.toLocaleLowerCase().includes(query);
+  const site=group.site&&rowMatch(group.site,projectMatches)?group.site:null;
+  const worktrees=group.worktrees.filter(row=>rowMatch(row,projectMatches));
+  if(site||worktrees.length)result.push({...group,site,worktrees});
+ }
+ return result;
+}
+function sortGroups(groups,sortBy='name'){
+ const collator=new Intl.Collator('fr',{sensitivity:'base',numeric:true});
+ const name=row=>String(row.git_branch||row.branch||row.project||'');
+ const activity=row=>row.paused?1:row.visibility==='public'||row.visibility==='private'?3:0;
+ const protectionScores=new Map([['closed',5],['ip_and_password',4],['password',4],['ip',4],['ip_or_password',3],['public',2]]);
+ const protection=row=>row.access_policy_reported?protectionScores.get(row.access_summary?.mode)||0:0;
+ const score=(group,fn)=>Math.max(0,...[group.site,...group.worktrees].filter(Boolean).map(fn));
+ const compareTargets=(a,b)=>{
+  if(sortBy==='activity'&&activity(a)!==activity(b))return activity(b)-activity(a);
+  if(sortBy==='protection'&&protection(a)!==protection(b))return protection(b)-protection(a);
+  return collator.compare(name(a),name(b));
+ };
+ return (groups||[]).map(group=>({...group,worktrees:[...group.worktrees].sort(compareTargets)})).sort((a,b)=>{
+  if(sortBy==='activity'&&score(a,activity)!==score(b,activity))return score(b,activity)-score(a,activity);
+  if(sortBy==='protection'&&score(a,protection)!==score(b,protection))return score(b,protection)-score(a,protection);
+  return collator.compare(a.project,b.project);
+ });
+}
+function nonEmptySecret(value){return typeof value==='string'&&value.length>0}
+
+if(typeof module!=='undefined'&&module.exports)module.exports={groupShares,filterGroups,sortGroups,nonEmptySecret};
+else (()=>{
 // L’interface n’applique jamais une politique avant validation explicite.
-(() => {
  const $=id=>document.getElementById(id);
  const context=lerd.context||{};
  const scopedSite=context.site||'';
  const scopedBranch=context.branch||'';
  let snapshot=null;
  let target=null;
+ let detailReturnFocus=null;
+ let autoOpened=false;
  let revision=null;
  let originalMode='closed';
  let returnFocus=null;
  let credentialCount=0;
+ const collapsedProjects=new Set();
  const modes=new Set(['closed','public','ip','password','ip_and_password','ip_or_password']);
  const text=(tag,value,cls)=>{const element=document.createElement(tag);element.textContent=String(value??'');if(cls)element.className=cls;return element};
- const isContextTarget=row=>!scopedSite||(row.project===scopedSite&&(row.branch||'')===scopedBranch);
  const displayBranch=row=>row.git_branch||row.branch||'';
  const policyPath=row=>'policy?site='+encodeURIComponent(row.project)+'&branch='+encodeURIComponent(row.branch||'');
  const policyModes=new Map([
@@ -36,6 +94,8 @@
   const policy=policyModes.get(row.access_summary.mode);
   if(!policy){cell.append(text('span','Mode inconnu','lerd-pill warn'));return cell}
   cell.append(text('span',policy.label,'lerd-pill '+policy.className));
+  const denial=row.access_summary.denial_status;
+  if(denial===403||denial===404)cell.append(text('div','Refus '+denial+(denial===404?' · Introuvable':' · Accès refusé'),'lerd-muted'));
   const rate=row.access_summary.rate;
   if(rate&&typeof rate.requests_per_second==='number'){
    const detail=rate.requests_per_second>0?'Limite '+rate.requests_per_second+' req/s'+(typeof rate.burst==='number'?' · burst '+rate.burst:''):'Limite désactivée';
@@ -68,6 +128,9 @@
   if(needsNetwork)impact+=' Réseaux autorisés : '+(networkValues.join(', ')||'aucun')+'.';
   if(addedUsers.length)impact+=' Comptes ajoutés ou renouvelés : '+addedUsers.join(', ')+'.';
   if(removedUsers.length)impact+=' Comptes retirés : '+removedUsers.join(', ')+'.';
+  const denial=Number($('denial-status').value);
+  impact+=' Refus réseau : '+(denial===404?'404 Introuvable':'403 Accès refusé')+'.';
+  if(needsAccount)impact+=' Basic Auth conserve 401.';
   const rate=Number($('rate').value||0);
   impact+=' Limite : '+(rate>0?rate+' requêtes/s, burst '+$('burst').value:'désactivée')+'.';
   $('impact-summary').textContent=impact;
@@ -75,11 +138,11 @@
  function credentialRows(){return [...$('credentials').querySelectorAll('[data-credential]')].map(row=>({
   username:row.querySelector('[data-username]').value.trim(),
   password:row.querySelector('[data-password]').value
- })).filter(row=>row.username&&row.password)}
+ })).filter(row=>row.username&&nonEmptySecret(row.password))}
  function hasPartialCredentials(){return [...$('credentials').querySelectorAll('[data-credential]')].some(row=>{
   const username=row.querySelector('[data-username]').value.trim();
   const password=row.querySelector('[data-password]').value;
-  return Boolean(username)!==Boolean(password);
+  return Boolean(username)!==nonEmptySecret(password);
  })}
  function addCredential(){
   const row=document.createElement('div');row.dataset.credential=String(++credentialCount);row.className='credential-row lerd-section';
@@ -105,28 +168,76 @@
    label.append(checkbox,document.createTextNode(' Retirer '+user.username));$('existing-users').append(label);
   }
  }
+ function protectionDescription(row){
+  if(row.visibility==='private')return 'LAN : hors portée';
+  if(row.paused)return row.access_policy_reported?'Règle préparée · partage en pause':'Partage en pause';
+  if(row.visibility==='closed')return row.access_policy_reported?'Règle préparée · partage arrêté':'Partage arrêté';
+  if(snapshot.native_access_available!==true)return 'Protection indisponible';
+  if(row.access_policy_reported!==true||!row.access_summary)return 'Protection non rapportée';
+  const policy=policyModes.get(row.access_summary.mode);
+  if(!policy)return 'Mode inconnu';
+  const rate=row.access_summary.rate;
+  const detail=rate&&typeof rate.requests_per_second==='number'?(rate.requests_per_second>0?' · '+rate.requests_per_second+' req/s'+(typeof rate.burst==='number'?' · burst '+rate.burst:''):' · limite désactivée'):'';
+  const denial=row.access_summary.denial_status;
+  const denialDetail=denial===403||denial===404?' · refus '+denial:'';
+  return policy.label+detail+denialDetail;
+ }
+ function openDetails(row,trigger){
+  detailReturnFocus=trigger||document.activeElement;
+  $('details-title').textContent=row.project+(row.branch?' · '+displayBranch(row):'');
+  const fields=$('detail-fields');fields.replaceChildren();
+  const add=(label,value)=>{fields.append(text('dt',label,'lerd-label'),text('dd',value,'lerd-muted'))};
+  add('Type',row.kind==='worktree'?'Worktree':'Site');
+  if(row.domain)add('Domaine LERD',row.domain);
+  if(row.framework)add('Framework',row.framework);
+  if(row.php_version)add('PHP',row.php_version);
+  if(row.node_version)add('Node.js',row.node_version);
+  if(!row.branch&&row.git_branch)add('Branche Git',row.git_branch);
+  if(row.branch){add('Branche',displayBranch(row));if(row.git_branch&&row.git_branch!==row.branch)add('Identifiant LERD',row.branch)}
+  add('Partage',row.paused?'En pause':row.visibility==='public'?'Public actif':row.visibility==='private'?'LAN actif':'Arrêté');
+  if(row.url)add('URL',row.url);
+  if(row.port_reported)add('Port',row.port);else if(row.visibility==='public')add('Port','Non exposé par l’API');
+  add('Protection native',protectionDescription(row));
+  if(row.access_policy_reported&&Number.isInteger(row.access_summary?.revision))add('Révision de règle',row.access_summary.revision);
+  $('details-dialog').showModal();$('close-details').focus();
+ }
+ function appendShareRow(row){
+  const tr=document.createElement('tr');const identity=document.createElement('td');
+  identity.append(text('strong',row.project));
+  if(displayBranch(row))identity.append(text('div',displayBranch(row),'lerd-muted'));
+  const state=document.createElement('td');
+  const shareLabel=row.paused?'Partage en pause':({public:'Partage public actif',private:'Partage LAN actif',closed:'Partage arrêté'})[row.visibility]||'État inconnu';
+  state.append(text('span',shareLabel,'lerd-pill '+(row.paused?'warn':row.visibility==='closed'?'bad':'accent')));
+  const address=document.createElement('td');
+  if(row.url){const link=text('a',row.url,'lerd-mono');link.href=row.url;link.target='_blank';link.rel='noopener noreferrer';address.append(link)}
+  else address.append(text('span','—','lerd-muted'));
+  const port=text('td',row.port_reported?row.port:row.visibility==='public'?'Non exposé par l’API':'—','lerd-muted');
+  const protection=protectionCell(row);
+  const actions=document.createElement('td');
+  const details=document.createElement('button');details.type='button';details.textContent='Détails';details.setAttribute('aria-label','Détails de '+row.project+(row.branch?' · '+displayBranch(row):''));details.addEventListener('click',()=>openDetails(row,details));
+  const configure=document.createElement('button');configure.type='button';configure.textContent='Protection';configure.setAttribute('aria-label','Configurer la protection pour '+row.project+(row.branch?' · '+displayBranch(row):''));configure.addEventListener('click',()=>openPolicy(row,configure));
+  actions.append(details,configure);tr.append(identity,state,address,port,protection,actions);$('rows').append(tr);
+ }
  function render(){
   if(!snapshot)return;
-  const query=$('search').value.trim().toLowerCase();
-  const rows=snapshot.shares.filter(row=>isContextTarget(row)&&(! $('active').checked||row.visibility!=='closed')&&(!query||[row.project,displayBranch(row),row.branch].filter(Boolean).join(' ').toLowerCase().includes(query)));
+  const groups=sortGroups(filterGroups(groupShares(snapshot.shares),{
+   query:$('search').value,share:$('share-filter').value,protection:$('protection-filter').value,
+   nativeAccessAvailable:snapshot.native_access_available,site:scopedSite,branch:scopedBranch
+  }),$('sort-by').value);
   $('rows').replaceChildren();
-  for(const row of rows){
-   const tr=document.createElement('tr');const identity=document.createElement('td');
-   identity.append(text('strong',row.project));
-   if(displayBranch(row))identity.append(text('div',displayBranch(row),'lerd-muted'));
-   const state=document.createElement('td');
-   const shareLabel=row.paused?'Partage en pause':({public:'Partage public actif',private:'Partage LAN actif',closed:'Partage arrêté'})[row.visibility]||'État inconnu';
-   state.append(text('span',shareLabel,'lerd-pill '+(row.paused?'warn':row.visibility==='closed'?'bad':'accent')));
-   const address=document.createElement('td');
-   if(row.url){const link=text('a',row.url,'lerd-mono');link.href=row.url;link.target='_blank';link.rel='noopener noreferrer';address.append(link)}
-   else address.append(text('span','—','lerd-muted'));
-   const port=text('td',row.port_reported?row.port:row.visibility==='public'?'Non exposé par l’API':'—','lerd-muted');
-   const protection=protectionCell(row);
-   const actions=document.createElement('td');const configure=document.createElement('button');configure.type='button';configure.textContent='Configurer l’accès';configure.setAttribute('aria-label','Configurer l’accès pour '+row.project+(row.branch?' · '+displayBranch(row):''));configure.addEventListener('click',()=>openPolicy(row,configure));actions.append(configure);
-   tr.append(identity,state,address,port,protection,actions);$('rows').append(tr);
+  let visibleTargets=0;
+  for(const group of groups){
+   const groupTargets=[group.site,...group.worktrees].filter(Boolean);
+   const header=document.createElement('tr');header.className='lerd-row';const headerCell=document.createElement('td');headerCell.colSpan=6;
+   const isCollapsed=collapsedProjects.has(group.project);
+   const toggle=document.createElement('button');toggle.type='button';toggle.textContent=(isCollapsed?'▸ ':'▾ ')+group.project;toggle.setAttribute('aria-expanded',String(!isCollapsed));
+   toggle.addEventListener('click',()=>{if(collapsedProjects.has(group.project))collapsedProjects.delete(group.project);else collapsedProjects.add(group.project);render()});
+   headerCell.append(toggle,text('span',groupTargets.length+' cible(s)'+(group.worktrees.length?' · '+group.worktrees.length+' worktree(s)':''),'lerd-pill accent'));
+   header.append(headerCell);$('rows').append(header);
+   if(!isCollapsed){if(group.site){appendShareRow(group.site);visibleTargets++}for(const row of group.worktrees){appendShareRow(row);visibleTargets++}}
   }
-  $('empty').hidden=rows.length!==0;
-  $('count').textContent=rows.length+' affiché(s) · '+snapshot.active_count+' actif(s)';
+  $('empty').hidden=groups.length!==0;
+  $('count').textContent=groups.length+' projet(s) · '+visibleTargets+' cible(s) affichée(s)';
  }
  async function refresh(){
   $('refresh').disabled=true;$('status').textContent='Lecture de l’état natif…';
@@ -134,6 +245,11 @@
    const data=parseResponse(await lerd.api('shares'));
    if(data.schema_version!==1||data.read_only!==true||!Array.isArray(data.shares))throw new Error('Réponse du plugin non reconnue.');
    snapshot=data;render();$('status').textContent='Source : '+data.source+' · état lu à '+new Date().toLocaleTimeString('fr-FR');
+   if(!autoOpened&&context.intent==='access'){
+    autoOpened=true;
+    const row=data.shares.find(item=>item.project===scopedSite&&(item.branch||'')===scopedBranch&&item.visibility==='public'&&!item.paused);
+    if(row)await openPolicy(row,null);
+   }
   }catch(error){$('status').textContent=error.message||'Lecture impossible.'}
   finally{$('refresh').disabled=false}
  }
@@ -151,8 +267,8 @@
   $('policy-dialog').showModal();
   try{
    const policy=parseResponse(await lerd.api(policyPath(target)));
-   if(!policy||policy.version!==1||policy.site!==target.project||(policy.branch||'')!==target.branch||!modes.has(policy.mode)||!Number.isInteger(policy.revision)||policy.enforcement!=='native'||!Array.isArray(policy.networks)||!Array.isArray(policy.users)||!policy.rate||typeof policy.rate.requests_per_second!=='number'||typeof policy.rate.burst!=='number')throw new Error('Contrat de politique non reconnu.');
-   revision=policy.revision;originalMode=policy.mode;$('mode').value=policy.mode;$('networks').value=policy.networks.join('\n');$('rate').value=String(policy.rate.requests_per_second);$('burst').value=String(policy.rate.burst);
+   if(!policy||policy.version!==1||policy.site!==target.project||(policy.branch||'')!==target.branch||!modes.has(policy.mode)||!Number.isInteger(policy.revision)||policy.enforcement!=='native'||!Array.isArray(policy.networks)||!Array.isArray(policy.users)||!policy.rate||typeof policy.rate.requests_per_second!=='number'||typeof policy.rate.burst!=='number'||(policy.denial_status!==undefined&&![403,404].includes(policy.denial_status)))throw new Error('Contrat de politique non reconnu.');
+   revision=policy.revision;originalMode=policy.mode;$('mode').value=policy.mode;$('networks').value=policy.networks.join('\n');$('denial-status').value=String(policy.denial_status===undefined?403:policy.denial_status);$('rate').value=String(policy.rate.requests_per_second);$('burst').value=String(policy.rate.burst);
    renderUsers(policy.users);$('policy-status').textContent='Politique native · révision '+policy.revision+'. Les mots de passe ne sont pas lisibles.';
    $('apply-policy').disabled=false;updateModeFields();$('mode').focus();
   }catch(error){$('policy-status').textContent=customLerdMessage(error);$('apply-policy').disabled=true}
@@ -174,11 +290,10 @@
     if(Array.from(credential.username).length>128||credential.username.includes(':')){$('dialog-error').textContent='Un nom de compte dépasse 128 caractères ou contient « : ».';$('dialog-error').focus();return false}
     if(usernames.has(credential.username)){$('dialog-error').textContent='Chaque nom de compte ajouté doit être unique.';$('dialog-error').focus();return false}
     usernames.add(credential.username);
-    const bytes=new TextEncoder().encode(credential.password).length;
-    if(bytes<8||bytes>72){$('dialog-error').textContent='Chaque mot de passe doit contenir entre 8 et 72 octets en UTF-8.';$('dialog-error').focus();return false}
    }
   }
   if(!modes.has(mode)){$('dialog-error').textContent='Choisissez un mode d’accès valide.';$('dialog-error').focus();return false}
+  if(![403,404].includes(Number($('denial-status').value))){$('dialog-error').textContent='Choisissez 403 ou 404 pour les refus réseau.';$('dialog-error').focus();return false}
   if(needsNetwork&&!networks.length){$('dialog-error').textContent='Ajoutez au moins un réseau CIDR pour ce mode.';$('dialog-error').focus();return false}
   if(needsAccount&&credentials.length+currentUsers-removeCount===0){$('dialog-error').textContent='Conservez ou ajoutez au moins un compte pour ce mode.';$('dialog-error').focus();return false}
   const rate=Number($('rate').value||0);const burst=Number($('burst').value||60);
@@ -206,7 +321,7 @@
   const credentials=needsAccount?credentialRows():[];
   const remove_users=needsAccount?[...$('existing-users').querySelectorAll('input[type="checkbox"]:checked')].map(input=>input.value):[];
   const rate=Number($('rate').value||0);const burst=Number($('burst').value||60);
-  const payload={site:target.project,branch:target.branch,mode,networks,credentials,remove_users,revision,rate:{requests_per_second:rate,burst}};
+  const payload={site:target.project,branch:target.branch,mode,networks,credentials,remove_users,revision,rate:{requests_per_second:rate,burst},denial_status:Number($('denial-status').value)};
   $('apply-policy').disabled=true;$('dialog-error').textContent='Application en cours…';
   try{
    await lerd.api(policyPath(target),{method:'POST',body:payload});
@@ -223,8 +338,11 @@
  }
  $('refresh').addEventListener('click',refresh);
  $('search').addEventListener('input',render);
- $('active').addEventListener('change',render);
+ $('share-filter').addEventListener('change',render);
+ $('protection-filter').addEventListener('change',render);
+ $('sort-by').addEventListener('change',render);
  $('mode').addEventListener('change',updateModeFields);
+ $('denial-status').addEventListener('change',updateImpact);
  $('networks').addEventListener('input',updateImpact);
  $('rate').addEventListener('input',updateImpact);$('burst').addEventListener('input',updateImpact);
  $('add-credential').addEventListener('click',()=>addCredential());
@@ -232,8 +350,9 @@
  $('apply-policy').addEventListener('click',previewChanges);
  $('confirm-apply').addEventListener('click',applyPolicy);
  $('back-to-policy').addEventListener('click',()=>{$('confirm-dialog').close();$('apply-policy').focus()});
+ $('close-details').addEventListener('click',()=>{$('details-dialog').close();detailReturnFocus?.focus()});
  $('policy-dialog').addEventListener('cancel',clearCredentials);
  $('context-note').hidden=!scopedSite;
- if(scopedSite){$('active').checked=false}
+ if(scopedSite)$('share-filter').value='all';
  refresh();
 })();

@@ -31,6 +31,38 @@ class AccessSharingTests(unittest.TestCase):
   text=json.dumps(payload)
   self.assertNotIn('/private/example',text);self.assertNotIn('PASSWORD',text)
   self.assertNotIn('api_key',text)
+ def test_paused_share_is_not_counted_as_active(self):
+  data=normalize([{'name':'demo','paused':True,'lan_port':9100}])
+  self.assertEqual(data['active_count'],0)
+ def test_parent_metadata_uses_real_native_branch_field(self):
+  row,=normalize([{'name':'demo','domain':'demo.test','framework':'laravel',
+    'php_version':'8.4','node_version':'22','branch':'feature/main',
+    'git_branch':'not-a-native-parent-field','path':'/private/example',
+    'git_remote':'https://user:fixture@example.invalid/repo.git'}])['shares']
+  self.assertEqual({key:row[key] for key in ('domain','framework','php_version','node_version','git_branch')},
+    {'domain':'demo.test','framework':'laravel','php_version':'8.4','node_version':'22','git_branch':'feature/main'})
+  self.assertIsNone(row['branch'])
+  self.assertNotIn('fixture',json.dumps(row));self.assertNotIn('/private/example',json.dumps(row))
+ def test_worktree_runtime_overrides_and_identity_are_independent(self):
+  rows=normalize([{'name':'demo','framework':'laravel','php_version':'8.4','node_version':'22',
+    'domain':'demo.test','branch':'main','worktrees':[
+      {'branch':'feature-a','git_branch':'feature/a','domain':'feature-a.demo.test',
+       'php_version':'8.3','framework':'not-a-native-worktree-field'},
+      {'branch':'feature-b','git_branch':'feature/b','node_version':'24'}]}])['shares']
+  a,b=rows[1:]
+  self.assertEqual((a['branch'],a['git_branch'],a['domain']),('feature-a','feature/a','feature-a.demo.test'))
+  self.assertEqual((a['framework'],a['php_version'],a['node_version']),('laravel','8.3','22'))
+  self.assertEqual((b['framework'],b['php_version'],b['node_version']),('laravel','8.4','24'))
+  self.assertIsNone(b['domain'])
+ def test_metadata_absent_or_invalid_stays_unknown(self):
+  rows=normalize([{'name':'demo','worktrees':[{'branch':'topic'}]},
+    {'name':'invalid','framework':{'path':'/private/example'},'php_version':True,
+     'node_version':22,'branch':['hidden'],'domain':'bad\nfield',
+     'worktrees':[{'branch':'topic','php_version':{'secret':'fixture'}}]}])['shares']
+  for row in rows:
+   for key in ('domain','framework','php_version','node_version','git_branch'):
+    self.assertIsNone(row[key],(row['project'],key))
+  self.assertNotIn('fixture',json.dumps(rows));self.assertNotIn('/private/example',json.dumps(rows))
  def test_invalid_or_ambiguous_native_state_fails(self):
   for data in ({},[None],[{'name':'demo','public_shared':'yes'}],
     [{'name':'demo','lan_port':9100,'public_shared':True}],
