@@ -33,6 +33,9 @@ Rechargez le tableau de bord LERD pour voir la page. Le plugin utilise uniquemen
 Python 3 standard et le pont d’interface du squelette natif. Il n’installe aucun
 service ou binaire LERD modifié.
 
+Le dépôt impose les fins de ligne LF, y compris lors d’un export Git depuis
+Windows : les exécutables natifs ne doivent jamais contenir de shebang CRLF.
+
 ## Limites assumées
 
 L’API fournit une URL publique même pour certains partages **inactifs** : seul
