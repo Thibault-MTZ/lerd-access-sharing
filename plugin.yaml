@@ -5,3 +5,16 @@ version: 0.1.0-beta.1
 description: Vue en lecture seule des partages natifs LERD
 docs: DOCS.md
 icon: ui/icon.svg
+commands:
+  - name: shares
+    usage: Afficher les partages natifs en lecture seule
+    run: bin/shares
+api:
+  - path: shares
+    methods: [GET]
+    run: bin/shares
+ui:
+  page:
+    title: Accès et partages
+    icon: ui/icon.svg
+    entry: ui/index.html

@@ -1,0 +1,14 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const assert=require('node:assert/strict');
+const vm=require('node:vm');
+const root=path.resolve(__dirname,'..');
+const html=fs.readFileSync(path.join(root,'ui/index.html'),'utf8');
+const script=fs.readFileSync(path.join(root,'ui/view.js'),'utf8');
+new vm.Script(script);
+assert.match(html,/lerd\.js/);
+assert.match(html,/Ce plugin ne bloque aucune requête/);
+assert.match(script,/lerd\.api\('shares'\)/);
+assert.doesNotMatch(script,/innerHTML|localStorage|sessionStorage|document\.cookie/);
+assert.doesNotMatch(script,/method\s*:\s*['"](?:POST|PUT|DELETE|PATCH)/);
+console.log('Interface native en lecture seule : syntaxe et garde-fous vérifiés.');

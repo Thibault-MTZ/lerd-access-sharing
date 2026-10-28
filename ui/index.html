@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Accès et partages</title></head>
+<body>
+ <section class="lerd-section">
+  <h1>Accès et partages</h1>
+  <p class="lerd-muted">Vue native en lecture seule des sites et worktrees. Pour démarrer ou arrêter un partage, utilisez les menus de partage de LERD.</p>
+  <div class="lerd-toolbar">
+   <button id="refresh" class="primary">Actualiser</button>
+   <label><input id="active" type="checkbox" checked> Partages actifs uniquement</label>
+   <input id="search" type="search" placeholder="Projet ou branche" aria-label="Rechercher un projet ou une branche">
+   <span id="count" class="lerd-pill">Chargement…</span>
+  </div>
+  <p id="status" role="status" class="lerd-muted"></p>
+  <div class="lerd-card flush"><table><thead><tr><th>Projet / branche</th><th>Partage natif</th><th>URL</th><th>Port</th></tr></thead><tbody id="rows"></tbody></table></div>
+  <p id="empty" class="lerd-empty" hidden>Aucun partage ne correspond.</p>
+  <div class="lerd-card">
+   <h2>Limites de cette V1</h2>
+   <ul id="limits"></ul>
+   <p class="lerd-muted">Ce plugin ne bloque aucune requête et ne fournit pas de contrôle IP, d’authentification ou de limite de requêtes. Conservez vos protections de passerelle. Une URL proposée par LERD ne signifie pas que le partage est actif, ni qu’il est accessible depuis Internet.</p>
+  </div>
+ </section>
+ <script src="lerd.js"></script>
+ <script src="view.js"></script>
+</body>
+</html>
