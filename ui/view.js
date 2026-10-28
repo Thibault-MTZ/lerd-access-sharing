@@ -192,7 +192,7 @@
   const removeCount=needsAccount?$('existing-users').querySelectorAll('input[type="checkbox"]:checked').length:0;
   $('confirm-target').textContent=$('target-label').textContent;
   $('confirm-summary').textContent=$('impact-summary').textContent;
-  const mayReduce=mode==='public'||(mode==='closed'&&originalMode!=='closed')||removeCount>0;
+  const mayReduce=(mode==='public'&&originalMode!=='public')||(mode==='closed'&&originalMode!=='closed')||removeCount>0;
   $('confirm-warning').hidden=!mayReduce;
   const button=$('confirm-apply');button.className=mayReduce?'danger':'primary';
   $('confirm-dialog').showModal();button.focus();
