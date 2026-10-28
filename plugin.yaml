@@ -1,0 +1,7 @@
+api_version: 1
+name: lerd-access-sharing
+lerd: ">=1.38"
+version: 0.1.0-beta.1
+description: Vue en lecture seule des partages natifs LERD
+docs: DOCS.md
+icon: ui/icon.svg
