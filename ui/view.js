@@ -278,7 +278,7 @@ else (()=>{
   $('target-label').textContent=target.project+(target.branch?' · '+displayBranch(row):' · site');
   $('policy-status').textContent='Lecture de la politique…';$('dialog-error').textContent='';$('apply-policy').disabled=true;
   $('mode').value='closed';$('networks').value='';$('rate').value='0';$('burst').value='60';renderUsers([]);clearCredentials();updateModeFields();
-  if(contextIntent){$('policy-dialog').classList.add('inline-policy');$('policy-dialog').open=true;$('cancel-policy').textContent='Fermer'}
+  if(contextIntent){$('policy-dialog').classList.add('inline-policy');$('policy-dialog').open=true;$('dialog-title').hidden=true;$('cancel-policy').textContent='Fermer'}
   else $('policy-dialog').showModal();
   try{
    const policy=parseResponse(await lerd.api(policyPath(target)));

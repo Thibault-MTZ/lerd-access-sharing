@@ -8,9 +8,9 @@
   #search{flex:1;min-width:min(12rem,100%)}
   #share-filter,#protection-filter,#sort-by{max-width:100%}
   #policy-dialog,#confirm-dialog,#details-dialog{box-sizing:border-box;width:min(44rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);max-height:calc(100dvh - 2rem);overflow:hidden}
-  #policy-dialog.inline-policy{position:static;display:block;margin:0;width:100%;max-width:none;max-height:none;overflow:visible}
-  #policy-dialog.inline-policy .dialog-shell{display:block;max-height:none}
-  #policy-dialog.inline-policy .dialog-body{max-height:none;overflow:visible}
+  #policy-dialog.inline-policy{position:static;display:block;margin:0;width:100%;max-width:none;max-height:calc(100dvh - 1rem);overflow:hidden}
+  #policy-dialog.inline-policy .dialog-shell{display:grid;max-height:calc(100dvh - 3rem)}
+  #policy-dialog.inline-policy .dialog-body{min-height:0;max-height:none;overflow-y:auto}
   .dialog-shell{display:grid;grid-template-rows:minmax(0,1fr) auto;max-height:calc(100vh - 6rem);max-height:calc(100dvh - 6rem)}
   .dialog-body{min-width:0;min-height:0;overflow-y:auto}
   .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:.5rem}
