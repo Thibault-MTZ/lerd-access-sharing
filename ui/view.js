@@ -54,7 +54,39 @@ function sortGroups(groups,sortBy='name'){
 function nonEmptySecret(value){return typeof value==='string'&&value.length>0}
 function isInlineAccess(context){return Boolean(context&&context.intent==='access')}
 
-if(typeof module!=='undefined'&&module.exports)module.exports={groupShares,filterGroups,sortGroups,nonEmptySecret,isInlineAccess};
+function shareStatus(row,nativeAvailable=true){
+ if(row.paused)return {label:'En pause',tone:'bad',protection:null};
+ if(row.visibility==='closed')return {label:'Non partagé',tone:'bad',protection:null};
+ if(row.visibility==='private')return {label:'LAN seulement',tone:'warn',protection:null};
+ if(row.visibility!=='public')return {label:'État inconnu',tone:'warn',protection:null};
+ const summary=nativeAvailable&&row.access_policy_reported?row.access_summary:null;
+ if(summary?.mode==='closed')return {label:'Refus total',tone:'bad',protection:null};
+ if(!['public','ip','password','ip_and_password','ip_or_password'].includes(summary?.mode))return {label:'Partage actif',tone:'ok',protection:'Protection non rapportée'};
+ const auth=['ip','password','ip_and_password','ip_or_password'].includes(summary?.mode);
+ const rate=summary?.rate?.requests_per_second;
+ if(auth||typeof rate==='number'&&Number.isFinite(rate)&&rate>0)return {label:'Partage actif',tone:'ok',protection:'Protégé'};
+ if(summary?.mode==='public'&&rate===0)return {label:'Partage actif',tone:'ok',protection:'Sans restriction'};
+ return {label:'Partage actif',tone:'ok',protection:'Protection non rapportée'};
+}
+function activeShareCount(group,nativeAvailable=true){
+ return [group.site,...group.worktrees].filter(Boolean).filter(row=>['Partage actif','LAN seulement'].includes(shareStatus(row,nativeAvailable).label)).length;
+}
+function projectInitiallyCollapsed(group,nativeAvailable=true){return activeShareCount(group,nativeAvailable)===0}
+function policyInheritance(policy){
+ if(policy.inherited===undefined&&policy.parent_revision===undefined)return {available:false,inherited:false,parent_revision:null};
+ if(typeof policy.inherited!=='boolean'||!Number.isInteger(policy.parent_revision)||policy.parent_revision<0)throw new Error('Métadonnées d’héritage non reconnues.');
+ return {available:true,inherited:policy.inherited,parent_revision:policy.parent_revision};
+}
+function inheritanceResetPayload(site,branch,revision,parent_revision){
+ if(!branch||!Number.isInteger(revision)||revision<0||!Number.isInteger(parent_revision)||parent_revision<0)throw new Error('Contexte d’héritage incomplet.');
+ return {site,branch,inherit:true,revision,parent_revision};
+}
+function inheritanceLabel(row){
+ if(row.kind!=='worktree'||typeof row.access_summary?.inherited!=='boolean')return null;
+ return row.access_summary.inherited?'Règles du parent':'Règles personnalisées';
+}
+
+if(typeof module!=='undefined'&&module.exports)module.exports={groupShares,filterGroups,sortGroups,nonEmptySecret,isInlineAccess,shareStatus,activeShareCount,projectInitiallyCollapsed,policyInheritance,inheritanceResetPayload,inheritanceLabel};
 else (()=>{
 // L’interface n’applique jamais une politique avant validation explicite.
  const $=id=>document.getElementById(id);
@@ -68,17 +100,22 @@ else (()=>{
  let autoOpened=false;
  let revision=null;
  let originalMode='closed';
+ let parentRevision=null;
+ let inheritanceAvailable=false;
+ let originalInherited=false;
+ let pendingReset=false;
  let returnFocus=null;
  let credentialCount=0;
  const collapsedProjects=new Set();
+ const knownProjects=new Set();
  const modes=new Set(['closed','public','ip','password','ip_and_password','ip_or_password']);
  const text=(tag,value,cls)=>{const element=document.createElement(tag);element.textContent=String(value??'');if(cls)element.className=cls;return element};
  const displayBranch=row=>row.git_branch||row.branch||'';
  const policyPath=row=>'policy?site='+encodeURIComponent(row.project)+'&branch='+encodeURIComponent(row.branch||'');
  const policyModes=new Map([
-  ['closed',{label:'Refus total',className:'bad'}],['public',{label:'Sans contrôle',className:'warn'}],
-  ['ip',{label:'Filtrage IP',className:'ok'}],['password',{label:'Compte requis',className:'ok'}],
-  ['ip_and_password',{label:'IP + compte',className:'ok'}],['ip_or_password',{label:'IP ou compte',className:'warn'}]
+  ['closed',{label:'Refus total',className:'bad'}],['public',{label:'Sans contrôle IP/compte',className:'ok'}],
+  ['ip',{label:'Filtrage IP',className:'warn'}],['password',{label:'Compte requis',className:'warn'}],
+  ['ip_and_password',{label:'IP + compte',className:'warn'}],['ip_or_password',{label:'IP ou compte',className:'warn'}]
  ]);
  function protectionCell(row){
   const cell=document.createElement('td');
@@ -119,6 +156,7 @@ else (()=>{
   updateImpact();
  }
  function updateImpact(){
+  if(usesParentRules()){$('impact-summary').textContent='Cette branche suivra les règles du projet parent (révision '+parentRevision+'). Les règles personnalisées seront retirées, sans changer le parent ni la publication.';return}
   const mode=$('mode').value;
   const labels={closed:'La cible sera fermée à tout accès.',public:'L’accès restera public.',ip:'Seuls les réseaux CIDR indiqués pourront accéder au site.',password:'Un compte valide sera requis.',ip_and_password:'Un réseau autorisé et un compte valide seront requis.',ip_or_password:'Un réseau autorisé ou un compte valide suffira.'};
   const networkValues=$('networks').value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
@@ -127,6 +165,7 @@ else (()=>{
   const addedUsers=needsAccount?credentialRows().map(row=>row.username):[];
   const removedUsers=needsAccount?[...$('existing-users').querySelectorAll('input[type="checkbox"]:checked')].map(input=>input.value):[];
   let impact=labels[mode]||'';
+  if(target?.branch&&inheritanceAvailable&&originalInherited)impact+=' Une exception sera créée pour cette branche ; les changements futurs du parent ne seront plus suivis.';
   if(needsNetwork)impact+=' Réseaux autorisés : '+(networkValues.join(', ')||'aucun')+'.';
   if(addedUsers.length)impact+=' Comptes ajoutés ou renouvelés : '+addedUsers.join(', ')+'.';
   if(removedUsers.length)impact+=' Comptes retirés : '+removedUsers.join(', ')+'.';
@@ -136,6 +175,16 @@ else (()=>{
   const rate=Number($('rate').value||0);
   impact+=' Limite : '+(rate>0?rate+' requêtes/s, burst '+$('burst').value:'désactivée')+'.';
   $('impact-summary').textContent=impact;
+ }
+ function usesParentRules(){return Boolean(target?.branch&&inheritanceAvailable&&$('inherit-parent').checked)}
+ function updateInheritanceFields(){
+  const inherited=usesParentRules();
+  $('apply-policy').disabled=!Number.isInteger(revision)||(inherited&&originalInherited);
+  for(const id of ['mode','denial-status','networks','rate','burst','add-credential'])$(id).disabled=inherited;
+  for(const input of $('existing-users').querySelectorAll('input'))input.disabled=inherited;
+  for(const input of $('credentials').querySelectorAll('input,button'))input.disabled=inherited;
+  $('inheritance-help').textContent=inherited?'La branche suit les changements du parent. Décochez pour préparer une exception.':'Les changements créent ou modifient une exception pour cette branche uniquement.';
+  updateImpact();
  }
  function credentialRows(){return [...$('credentials').querySelectorAll('[data-credential]')].map(row=>({
   username:row.querySelector('[data-username]').value.trim(),
@@ -200,25 +249,56 @@ else (()=>{
   if(row.url)add('URL',row.url);
   if(row.port_reported)add('Port',row.port);else if(row.visibility==='public')add('Port','Non exposé par l’API');
   add('Protection native',protectionDescription(row));
-  if(row.access_policy_reported&&Number.isInteger(row.access_summary?.revision))add('Révision de règle',row.access_summary.revision);
+  const origin=inheritanceLabel(row);if(origin)add('Origine des règles',origin);
+  if(row.kind==='worktree'&&Number.isInteger(row.access_summary?.parent_revision))add('Révision du parent',row.access_summary.parent_revision);
+  if(row.access_policy_reported&&row.access_summary?.inherited!==true&&Number.isInteger(row.access_summary?.revision))add('Révision de règle',row.access_summary.revision);
   $('details-dialog').showModal();$('close-details').focus();
+ }
+ function statusBadges(row){
+  const state=shareStatus(row,snapshot.native_access_available===true);const badges=text('div','','target-status');
+  badges.append(text('span',state.label,'lerd-pill '+state.tone));
+  if(state.protection)badges.append(text('span',state.protection,'lerd-pill '+(state.protection==='Sans restriction'?'ok':'warn')));
+  const origin=inheritanceLabel(row);if(origin)badges.append(text('span',origin,'lerd-pill accent'));
+  return badges;
+ }
+ function targetAddress(row){
+  if(!row.url)return text('span','—','lerd-muted');
+  const link=text('a',row.url,'target-link lerd-mono');link.href=row.url;link.target='_blank';link.rel='noopener noreferrer';return link;
+ }
+ function targetActions(row){
+  const actions=text('div','','target-actions');
+  const details=document.createElement('button');details.type='button';details.textContent='Détails';details.setAttribute('aria-label','Détails de '+row.project+(row.branch?' · '+displayBranch(row):''));details.addEventListener('click',()=>openDetails(row,details));
+  const configure=document.createElement('button');configure.type='button';configure.textContent='Protection';configure.setAttribute('aria-label','Configurer la protection pour '+row.project+(row.branch?' · '+displayBranch(row):''));configure.addEventListener('click',()=>openPolicy(row,configure));
+  actions.append(details,configure);return actions;
+ }
+ function projectHeading(group){
+  const heading=text('div','','project-heading');const targets=[group.site,...group.worktrees].filter(Boolean);
+  const toggle=document.createElement('button');toggle.type='button';toggle.textContent=(collapsedProjects.has(group.project)?'▸ ':'▾ ')+group.project;toggle.setAttribute('aria-expanded',String(!collapsedProjects.has(group.project)));
+  toggle.addEventListener('click',()=>{if(collapsedProjects.has(group.project))collapsedProjects.delete(group.project);else collapsedProjects.add(group.project);render()});
+  const active=activeShareCount(group,snapshot.native_access_available===true);
+  const hasPublic=targets.some(row=>shareStatus(row,snapshot.native_access_available===true).label==='Partage actif');
+  heading.append(toggle,text('span',active+' actif(s) / '+targets.length+' cible(s)'+(group.worktrees.length?' · '+group.worktrees.length+' worktree(s)':''),'lerd-pill '+(active?(hasPublic?'ok':'warn'):'bad')));return heading;
+ }
+ function appendShareCard(row,container){
+  const card=text('article','','lerd-card target-card');
+  card.append(text('h3',row.kind==='worktree'?displayBranch(row):'Site principal'),statusBadges(row),targetAddress(row));
+  const runtime=[row.framework,row.php_version?'PHP '+row.php_version:null,row.node_version?'Node.js '+row.node_version:null].filter(Boolean);
+  if(runtime.length)card.append(text('p',runtime.join(' · '),'lerd-muted'));
+  card.append(text('p',protectionDescription(row),'lerd-muted'),targetActions(row));container.append(card);
  }
  function appendShareRow(row){
   const tr=document.createElement('tr');const identity=document.createElement('td');
-  identity.append(text('strong',row.project));
-  if(displayBranch(row))identity.append(text('div',displayBranch(row),'lerd-muted'));
+  identity.className=row.kind==='worktree'?'target-worktree':'target-site';
+  identity.append(text('strong',row.kind==='worktree'?'↳ '+displayBranch(row):'Site principal'));
+  if(row.kind!=='worktree'&&displayBranch(row))identity.append(text('div',displayBranch(row),'lerd-muted'));
   const state=document.createElement('td');
-  const shareLabel=row.paused?'Partage en pause':({public:'Partage public actif',private:'Partage LAN actif',closed:'Partage arrêté'})[row.visibility]||'État inconnu';
-  state.append(text('span',shareLabel,'lerd-pill '+(row.paused?'warn':row.visibility==='closed'?'bad':'accent')));
+  state.append(statusBadges(row));
   const address=document.createElement('td');
-  if(row.url){const link=text('a',row.url,'lerd-mono');link.href=row.url;link.target='_blank';link.rel='noopener noreferrer';address.append(link)}
-  else address.append(text('span','—','lerd-muted'));
+  address.append(targetAddress(row));
   const port=text('td',row.port_reported?row.port:row.visibility==='public'?'Non exposé par l’API':'—','lerd-muted');
   const protection=protectionCell(row);
   const actions=document.createElement('td');
-  const details=document.createElement('button');details.type='button';details.textContent='Détails';details.setAttribute('aria-label','Détails de '+row.project+(row.branch?' · '+displayBranch(row):''));details.addEventListener('click',()=>openDetails(row,details));
-  const configure=document.createElement('button');configure.type='button';configure.textContent='Protection';configure.setAttribute('aria-label','Configurer la protection pour '+row.project+(row.branch?' · '+displayBranch(row):''));configure.addEventListener('click',()=>openPolicy(row,configure));
-  actions.append(details,configure);tr.append(identity,state,address,port,protection,actions);$('rows').append(tr);
+  actions.append(targetActions(row));tr.append(identity,state,address,port,protection,actions);$('rows').append(tr);
  }
  function render(){
   if(!snapshot)return;
@@ -226,17 +306,21 @@ else (()=>{
    query:$('search').value,share:$('share-filter').value,protection:$('protection-filter').value,
    nativeAccessAvailable:snapshot.native_access_available,site:scopedSite,branch:scopedBranch
   }),$('sort-by').value);
-  $('rows').replaceChildren();
+  const cards=$('view-mode').value==='cards';$('table-view').hidden=cards;$('cards-view').hidden=!cards;
+  $('rows').replaceChildren();$('cards-view').replaceChildren();
   let visibleTargets=0;
   for(const group of groups){
    const groupTargets=[group.site,...group.worktrees].filter(Boolean);
-   const header=document.createElement('tr');header.className='lerd-row';const headerCell=document.createElement('td');headerCell.colSpan=6;
    const isCollapsed=collapsedProjects.has(group.project);
-   const toggle=document.createElement('button');toggle.type='button';toggle.textContent=(isCollapsed?'▸ ':'▾ ')+group.project;toggle.setAttribute('aria-expanded',String(!isCollapsed));
-   toggle.addEventListener('click',()=>{if(collapsedProjects.has(group.project))collapsedProjects.delete(group.project);else collapsedProjects.add(group.project);render()});
-   headerCell.append(toggle,text('span',groupTargets.length+' cible(s)'+(group.worktrees.length?' · '+group.worktrees.length+' worktree(s)':''),'lerd-pill accent'));
-   header.append(headerCell);$('rows').append(header);
-   if(!isCollapsed){if(group.site){appendShareRow(group.site);visibleTargets++}for(const row of group.worktrees){appendShareRow(row);visibleTargets++}}
+   if(cards){
+    const project=text('section','','lerd-card project-card');project.append(projectHeading(group));
+    if(!isCollapsed){const grid=text('div','','target-grid');for(const row of groupTargets){appendShareCard(row,grid);visibleTargets++}project.append(grid)}
+    $('cards-view').append(project);
+   }else{
+    const header=document.createElement('tr');header.className='lerd-row project-group';const headerCell=document.createElement('td');headerCell.colSpan=6;
+    headerCell.append(projectHeading(group));header.append(headerCell);$('rows').append(header);
+    if(!isCollapsed)for(const row of groupTargets){appendShareRow(row);visibleTargets++}
+   }
   }
   $('empty').hidden=groups.length!==0;
   $('count').textContent=groups.length+' projet(s) · '+visibleTargets+' cible(s) affichée(s)';
@@ -246,7 +330,9 @@ else (()=>{
   try{
    const data=parseResponse(await lerd.api('shares'));
    if(data.schema_version!==1||data.read_only!==true||!Array.isArray(data.shares))throw new Error('Réponse du plugin non reconnue.');
-   snapshot=data;render();$('status').textContent='Source : '+data.source+' · état lu à '+new Date().toLocaleTimeString('fr-FR');
+   snapshot=data;
+   for(const group of groupShares(data.shares))if(!knownProjects.has(group.project)){knownProjects.add(group.project);if(projectInitiallyCollapsed(group,data.native_access_available===true))collapsedProjects.add(group.project)}
+   render();$('status').textContent='Source : '+data.source+' · état lu à '+new Date().toLocaleTimeString('fr-FR');
    if(!autoOpened&&context.intent==='access'){
     autoOpened=true;
     const row=data.shares.find(item=>item.project===scopedSite&&(item.branch||'')===scopedBranch&&item.visibility==='public'&&!item.paused);
@@ -274,7 +360,8 @@ else (()=>{
  }
  async function openPolicy(row,trigger=returnFocus){
   returnFocus=trigger||document.activeElement;
-  target={project:row.project,branch:row.branch||''};revision=null;
+  target={project:row.project,branch:row.branch||''};revision=null;parentRevision=null;inheritanceAvailable=false;originalInherited=false;pendingReset=false;
+  $('inheritance-field').hidden=true;$('inherit-parent').checked=false;$('reset-inheritance').hidden=true;updateInheritanceFields();
   $('target-label').textContent=target.project+(target.branch?' · '+displayBranch(row):' · site');
   $('policy-status').textContent='Lecture de la politique…';$('dialog-error').textContent='';$('apply-policy').disabled=true;
   $('mode').value='closed';$('networks').value='';$('rate').value='0';$('burst').value='60';renderUsers([]);clearCredentials();updateModeFields();
@@ -283,14 +370,18 @@ else (()=>{
   try{
    const policy=parseResponse(await lerd.api(policyPath(target)));
    if(!policy||policy.version!==1||policy.site!==target.project||(policy.branch||'')!==target.branch||!modes.has(policy.mode)||!Number.isInteger(policy.revision)||policy.enforcement!=='native'||!Array.isArray(policy.networks)||!Array.isArray(policy.users)||!policy.rate||typeof policy.rate.requests_per_second!=='number'||typeof policy.rate.burst!=='number'||(policy.denial_status!==undefined&&![403,404].includes(policy.denial_status)))throw new Error('Contrat de politique non reconnu.');
+   const inheritance=policyInheritance(policy);parentRevision=inheritance.parent_revision;inheritanceAvailable=inheritance.available;originalInherited=inheritance.inherited;
+   $('inheritance-field').hidden=!(target.branch&&inheritanceAvailable);$('inherit-parent').checked=Boolean(target.branch&&originalInherited);$('reset-inheritance').hidden=!(target.branch&&inheritanceAvailable&&!originalInherited);
+   $('inheritance-badge').textContent=originalInherited?'Règles du parent':'Règles personnalisées';
    revision=policy.revision;originalMode=policy.mode;$('mode').value=policy.mode;$('networks').value=policy.networks.join('\n');$('denial-status').value=String(policy.denial_status===undefined?403:policy.denial_status);$('rate').value=String(policy.rate.requests_per_second);$('burst').value=String(policy.rate.burst);
    renderUsers(policy.users);$('policy-status').textContent='Politique native · révision '+policy.revision+'. Les mots de passe ne sont pas lisibles.';
-   $('apply-policy').disabled=false;updateModeFields();$('mode').focus();
+   $('apply-policy').disabled=false;updateModeFields();updateInheritanceFields();(usesParentRules()?$('inherit-parent'):$('mode')).focus();
   }catch(error){$('policy-status').textContent=customLerdMessage(error);$('apply-policy').disabled=true}
  }
  function validatePolicy(){
   $('dialog-error').textContent='';
   if(!target||!Number.isInteger(revision)){$('dialog-error').textContent='La politique n’est pas disponible pour cette cible.';$('dialog-error').focus();return false}
+  if(usesParentRules())return Number.isInteger(parentRevision);
   const mode=$('mode').value;
   const networks=$('networks').value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
   const credentials=credentialRows();
@@ -317,12 +408,14 @@ else (()=>{
  }
  function previewChanges(){
   if(!validatePolicy())return;
+  pendingReset=usesParentRules();
   const mode=$('mode').value;
   const needsAccount=mode==='password'||mode==='ip_and_password'||mode==='ip_or_password';
   const removeCount=needsAccount?$('existing-users').querySelectorAll('input[type="checkbox"]:checked').length:0;
   $('confirm-target').textContent=$('target-label').textContent;
   $('confirm-summary').textContent=$('impact-summary').textContent;
-  const mayReduce=(mode==='public'&&originalMode!=='public')||(mode==='closed'&&originalMode!=='closed')||removeCount>0;
+  const mayReduce=pendingReset||(mode==='public'&&originalMode!=='public')||(mode==='closed'&&originalMode!=='closed')||removeCount>0;
+  $('confirm-warning').textContent=pendingReset?'Les règles personnalisées seront retirées. L’accès suivra désormais les règles du parent.':'Cette modification peut ouvrir l’accès ou supprimer un compte. Vérifiez la cible avant de continuer.';
   $('confirm-warning').hidden=!mayReduce;
   const button=$('confirm-apply');button.className=mayReduce?'danger':'primary';
   $('confirm-dialog').showModal();button.focus();
@@ -336,7 +429,8 @@ else (()=>{
   const credentials=needsAccount?credentialRows():[];
   const remove_users=needsAccount?[...$('existing-users').querySelectorAll('input[type="checkbox"]:checked')].map(input=>input.value):[];
   const rate=Number($('rate').value||0);const burst=Number($('burst').value||60);
-  const payload={site:target.project,branch:target.branch,mode,networks,credentials,remove_users,revision,rate:{requests_per_second:rate,burst},denial_status:Number($('denial-status').value)};
+  const payload=pendingReset?inheritanceResetPayload(target.project,target.branch,revision,parentRevision):{site:target.project,branch:target.branch,mode,networks,credentials,remove_users,revision,rate:{requests_per_second:rate,burst},denial_status:Number($('denial-status').value)};
+  if(!pendingReset&&target.branch&&inheritanceAvailable)payload.parent_revision=parentRevision;
   $('apply-policy').disabled=true;$('dialog-error').textContent='Application en cours…';
   try{
    await lerd.api(policyPath(target),{method:'POST',body:payload});
@@ -347,7 +441,7 @@ else (()=>{
    $('policy-dialog').close();
    await refresh();
    $('status').textContent='Règles enregistrées et liste actualisée.';
-   const focusTarget=[...$('rows').querySelectorAll('button')].find(button=>button.getAttribute('aria-label')===returnFocus?.getAttribute('aria-label'));
+   const focusTarget=[...document.querySelectorAll('#rows button,#cards-view button')].find(button=>button.getAttribute('aria-label')===returnFocus?.getAttribute('aria-label'));
    (focusTarget||$('refresh')).focus();
   }catch(error){clearCredentials();$('confirm-dialog').close();$('dialog-error').textContent=customLerdMessage(error);$('dialog-error').focus?.()}
   finally{$('apply-policy').disabled=false}
@@ -357,7 +451,12 @@ else (()=>{
  $('share-filter').addEventListener('change',render);
  $('protection-filter').addEventListener('change',render);
  $('sort-by').addEventListener('change',render);
+ $('view-mode').addEventListener('change',render);
+ $('expand-all').addEventListener('click',()=>{collapsedProjects.clear();render()});
+ $('collapse-all').addEventListener('click',()=>{for(const group of groupShares(snapshot?.shares||[]))collapsedProjects.add(group.project);render()});
  $('mode').addEventListener('change',updateModeFields);
+ $('inherit-parent').addEventListener('change',updateInheritanceFields);
+ $('reset-inheritance').addEventListener('click',()=>{$('inherit-parent').checked=true;updateInheritanceFields();previewChanges()});
  $('denial-status').addEventListener('change',updateImpact);
  $('networks').addEventListener('input',updateImpact);
  $('rate').addEventListener('input',updateImpact);$('burst').addEventListener('input',updateImpact);

@@ -1,7 +1,7 @@
 api_version: 1
 name: lerd-access-sharing
 lerd: ">=1.38"
-version: 0.2.0-beta.2
+version: 0.2.0-beta.3
 description: Partages natifs LERD et protections IP, Basic Auth et requêtes
 docs: DOCS.md
 icon: ui/icon.svg

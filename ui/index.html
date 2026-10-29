@@ -3,17 +3,36 @@
 <head>
  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Accès et partages</title>
  <style>
+  body.access-sharing{font-size:14px;line-height:1.6}
+  body.access-sharing h1{font-size:20px}body.access-sharing h2{font-size:18px}body.access-sharing h3{font-size:15px}
+  body.access-sharing table{font-size:14px}body.access-sharing th,body.access-sharing .lerd-muted,body.access-sharing .lerd-label,body.access-sharing .lerd-pill,body.access-sharing .lerd-mono{font-size:12px}
+  th,td{padding:.75rem}
+  body.access-sharing button,body.access-sharing input:not([type="checkbox"],[type="radio"]),body.access-sharing select{min-height:36px;height:auto;font-size:14px;line-height:1.4;padding-block:.5rem}
+  body.access-sharing textarea{font-size:14px;line-height:1.6}
+  input[type="checkbox"],input[type="radio"]{width:18px;height:18px}
+  #existing-users{display:grid;gap:.5rem}#existing-users label{display:flex;align-items:center;gap:.5rem;min-height:36px}
+  .inheritance-choice{display:flex;align-items:center;gap:.5rem;min-height:36px;margin-block:.75rem}
   .table-scroll{overflow-x:auto}
-  .inventory-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+  .inventory-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem}
+  .project-heading,.target-actions,.target-status{display:flex;align-items:center;flex-wrap:wrap;gap:.75rem}
+  .project-heading{margin-bottom:.75rem}body.access-sharing .project-heading button{font-size:16px}
+  .project-group:not(:first-child) td{padding-top:1.5rem}
+  .target-worktree{padding-left:2rem}.target-site{padding-left:1.25rem}
+  .target-actions{gap:.5rem}.target-status{gap:.4rem}
+  .target-link{display:inline-flex;align-items:center;min-height:36px;max-width:36ch;overflow-wrap:anywhere;white-space:normal}
+  #cards-view{display:grid;gap:1.5rem}.project-card{padding:1rem}
+  .target-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));gap:1rem}
+  .target-card{display:grid;align-content:start;gap:.75rem;min-width:0}
+  .target-card h3,.target-card p{margin:0}.target-card .target-actions{margin-top:.25rem}
   #search{flex:1;min-width:min(12rem,100%)}
   #share-filter,#protection-filter,#sort-by{max-width:100%}
   #policy-dialog,#confirm-dialog,#details-dialog{box-sizing:border-box;width:min(44rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);max-height:calc(100dvh - 2rem);overflow:hidden}
-  #policy-dialog.inline-policy{position:static;display:block;margin:0;width:100%;max-width:none;max-height:calc(100dvh - 1rem);overflow:hidden}
-  #policy-dialog.inline-policy .dialog-shell{display:grid;max-height:calc(100dvh - 3rem)}
+  #policy-dialog.inline-policy{position:static;display:block;margin:0;padding:.5rem;width:100%;max-width:none;max-height:calc(100dvh - 1rem);overflow:hidden}
+  #policy-dialog.inline-policy .dialog-shell{display:grid;max-height:calc(100dvh - 4rem)}
   #policy-dialog.inline-policy .dialog-body{min-height:0;max-height:none;overflow-y:auto}
   .dialog-shell{display:grid;grid-template-rows:minmax(0,1fr) auto;max-height:calc(100vh - 6rem);max-height:calc(100dvh - 6rem)}
   .dialog-body{min-width:0;min-height:0;overflow-y:auto}
-  .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:.5rem}
+  .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:.75rem;padding-top:.75rem}
   .form-field{display:grid;gap:.4rem;min-width:0}
   .wide-control{box-sizing:border-box;display:block;width:100%;min-height:6rem;resize:vertical}
   #mode,#denial-status{box-sizing:border-box;width:min(28rem,100%)}
@@ -25,25 +44,29 @@
   @media(max-width:40rem){.credential-row,.rate-grid,.details-grid{grid-template-columns:1fr}.table-scroll table{min-width:38rem}.dialog-actions button{flex:1 1 100%}}
  </style>
 </head>
-<body>
+<body class="access-sharing">
  <section id="inventory-section" class="lerd-section">
   <h1>Accès et partages</h1>
   <p class="lerd-muted">État des partages natifs et protections par site ou worktree. Les changements ne sont enregistrés qu’après votre validation.</p>
+  <p class="lerd-muted">« Partage actif » décrit le proxy LERD, sans confirmer la santé de l’application. Vert : actif ; jaune : protégé ; orange : LAN seulement ; rouge : fermé ou arrêté.</p>
   <div class="lerd-toolbar inventory-toolbar">
    <button id="refresh" class="primary">Actualiser</button>
    <input id="search" type="search" placeholder="Projet ou branche" aria-label="Rechercher un projet ou une branche">
    <select id="share-filter" aria-label="Filtrer par état du partage">
-    <option value="active" selected>Partages actifs</option><option value="all">Tous les états</option><option value="public">Public</option><option value="lan">LAN</option><option value="paused">En pause</option><option value="stopped">Arrêtés</option>
+    <option value="all" selected>Tous les états</option><option value="active">Partages actifs</option><option value="public">Public</option><option value="lan">LAN</option><option value="paused">En pause</option><option value="stopped">Arrêtés</option>
    </select>
    <select id="protection-filter" aria-label="Filtrer par protection">
     <option value="all">Toutes les protections</option><option value="closed">Refus total</option><option value="public">Sans contrôle</option><option value="ip">Filtrage IP</option><option value="password">Compte requis</option><option value="ip_and_password">IP + compte</option><option value="ip_or_password">IP ou compte</option><option value="unreported">Non rapportée</option><option value="unavailable">Indisponible</option><option value="outside">Hors portée</option>
    </select>
    <label for="sort-by">Trier par</label>
    <select id="sort-by"><option value="name">Nom</option><option value="activity">Activité (actifs d’abord)</option><option value="protection">Protection</option></select>
+   <label for="view-mode">Affichage</label><select id="view-mode"><option value="table">Arborescence</option><option value="cards">Cartes</option></select>
+   <button id="expand-all" type="button">Tout déplier</button><button id="collapse-all" type="button">Tout replier</button>
    <span id="count" class="lerd-pill">Chargement…</span>
   </div>
   <p id="status" role="status" class="lerd-muted"></p>
-  <div class="table-scroll lerd-card flush"><table><thead><tr><th>Projet / branche</th><th>Partage</th><th>URL</th><th>Port</th><th>Protection native</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+  <div id="table-view" class="table-scroll lerd-card flush"><table aria-label="Arborescence des projets et worktrees"><thead><tr><th>Projet / branche</th><th>Partage</th><th>URL</th><th>Port</th><th>Protection native</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+  <div id="cards-view" hidden></div>
   <p id="empty" class="lerd-empty" hidden>Aucun partage ne correspond.</p>
   <p id="context-note" class="lerd-muted" hidden>Onglet du site : la liste est limitée à cette cible.</p>
   <details class="lerd-card"><summary class="lerd-label">Portée des protections</summary>
@@ -58,6 +81,12 @@
    <h2 id="dialog-title">Protection d’accès</h2>
    <p id="target-label" class="lerd-muted"></p>
    <p id="policy-status" role="status" aria-live="polite" class="lerd-pill">En attente de la politique native…</p>
+   <section id="inheritance-field" class="lerd-card lerd-section" hidden>
+    <p id="inheritance-badge" class="lerd-pill accent"></p>
+    <label class="inheritance-choice"><input id="inherit-parent" type="checkbox"> Utiliser les règles du projet parent</label>
+    <p id="inheritance-help" class="lerd-muted"></p>
+    <button id="reset-inheritance" type="button" hidden>Revenir aux règles du parent</button>
+   </section>
    <section class="lerd-section">
     <h3>1. Niveau de protection</h3>
     <div class="form-field">

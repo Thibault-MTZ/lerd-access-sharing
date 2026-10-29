@@ -44,11 +44,25 @@ def denial_status(value=403):
 
 def validate_update(data):
     known = {'version', 'site', 'branch', 'mode', 'networks', 'users', 'revision',
-             'enforcement', 'rate', 'credentials', 'remove_users', 'denial_status'}
+             'enforcement', 'rate', 'credentials', 'remove_users', 'denial_status',
+             'inherited', 'parent_revision', 'inherit'}
     if not isinstance(data, dict) or set(data) - known:
         raise PolicyError('Champ de configuration non reconnu.')
-    mode = data.get('mode')
     revision = data.get('revision')
+    parent_revision = data.get('parent_revision', 0)
+    if type(parent_revision) is not int or parent_revision < 0:
+        raise PolicyError('Révision du parent invalide.')
+    if 'inherit' in data and type(data['inherit']) is not bool:
+        raise PolicyError('Choix d’héritage invalide.')
+    if 'inherited' in data and type(data['inherited']) is not bool:
+        raise PolicyError('État d’héritage invalide.')
+    if data.get('inherit') is True:
+        branch = identity(data.get('branch', ''), 'Branche')
+        if type(revision) is not int or revision < 0:
+            raise PolicyError('Révision invalide.')
+        return dict(site=identity(data.get('site'), 'Projet'), branch=branch,
+                    inherit=True, revision=revision, parent_revision=parent_revision)
+    mode = data.get('mode')
     if mode not in MODES or type(revision) is not int or revision < 0:
         raise PolicyError('Mode ou révision invalide.')
     networks = data.get('networks')
@@ -85,6 +99,7 @@ def validate_update(data):
                 credentials=accounts,
                 remove_users=[identity(name, 'Identifiant') for name in removed],
                 rate=rate_config(data.get('rate')),
+                parent_revision=parent_revision,
                 denial_status=denial_status(data.get('denial_status', 403)))
 
 
@@ -95,12 +110,30 @@ def clean_response(data):
         fields = ('site', 'branch', 'mode', 'networks', 'revision', 'rate')
         base = validate_update({**{key: data[key] for key in fields},
                                 'denial_status': data.get('denial_status', 403),
+                                'parent_revision': data.get('parent_revision', 0),
                                 'credentials': [], 'remove_users': []})
         users = [dict(username=identity(user['username'], 'Identifiant')) for user in data['users']]
     except (KeyError, TypeError):
         raise PolicyError('Réponse des protections natives invalide.') from None
-    return dict(version=1, enforcement='native', users=users,
+    inherited=data.get('inherited',False)
+    if type(inherited) is not bool or inherited and not base['branch']:
+        raise PolicyError('État d’héritage invalide.')
+    return dict(version=1, enforcement='native', users=users, inherited=inherited,
                 **{key: value for key, value in base.items() if key not in ('credentials', 'remove_users')})
+
+
+def effective_summary(site, branch, policies):
+    """L’export ne contient que les règles stockées, sans créer d’override."""
+    parent=policies.get((site,''))
+    own=policies.get((site,branch))
+    inherited=bool(branch) and (own is None or own.get('inherited') is True)
+    policy=own or (parent if inherited else None)
+    return dict(mode=policy['mode'] if policy else 'closed',
+        rate=policy['rate'] if policy else dict(requests_per_second=0,burst=60),
+        denial_status=policy.get('denial_status',403) if policy else 403,
+        revision=0 if inherited else policy['revision'] if policy else 0,
+        inherited=inherited,
+        parent_revision=parent['revision'] if branch and parent else 0)
 
 
 def native_policy(site, branch='', update=None, environ=None):

@@ -5,20 +5,15 @@ from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from access_sharing import ReadError,read_native
-from native_policy import PolicyError,native_policy
+from native_policy import PolicyError,native_policy,effective_summary
 try:
     result=read_native()
     try:
         policies={(p['site'],p['branch']):p for p in native_policy(None)}
         result['native_access_available']=True
         for row in result['shares']:
-            policy=policies.get((row['project'],row['branch'] or ''))
             row['access_policy_reported']=True
-            row['access_summary']={
-                'mode':policy['mode'] if policy else 'closed',
-                'rate':policy['rate'] if policy else dict(requests_per_second=0,burst=60),
-                'denial_status':policy.get('denial_status',403) if policy else 403,
-                'revision':policy['revision'] if policy else 0}
+            row['access_summary']=effective_summary(row['project'],row['branch'] or '',policies)
         result['limits']=[
             'Les règles natives protègent les partages publics et leurs ports directs ; les partages LAN restent distincts.',
             'Le port public et les règles de passerelles externes ne sont pas fournis par cet inventaire.',

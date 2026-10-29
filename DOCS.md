@@ -16,6 +16,24 @@ la recherche et le tri permettent de retrouver une cible. **Détails** affiche
 uniquement les métadonnées disponibles : domaine, branche Git et versions de
 runtime. Une valeur inconnue n'est pas déduite d'un chemin de projet.
 
+L’**Arborescence** est l’affichage initial et inclut tous les états : site parent
+et worktrees connus, indentés sous leur projet. Les projets avec un partage actif
+commencent ouverts ; les autres commencent repliés. **Tout déplier** et **Tout
+replier** permettent de parcourir l’ensemble. Choisir **Cartes** conserve les
+filtres et les replis ; aucune branche n’est créée par cette vue.
+Chaque projet reste séparé de ses voisins. Un badge vert indique un **Partage
+actif**, accompagné d’un badge jaune **Protégé** si une règle IP, un compte ou une
+limite de requêtes s’applique. Le LAN seul est orange ; un partage arrêté, en
+pause ou explicitement fermé est rouge. Une protection inconnue reste signalée
+comme non rapportée. Ces badges décrivent le proxy et ses règles, pas un test de
+santé de l’application ni une garantie d’accès depuis Internet.
+
+Le texte courant utilise une échelle de 14 px, les informations secondaires
+12 px et les contrôles au moins 36 px de haut. La police, les couleurs, les
+contrastes et les palettes personnalisées restent fournis par le thème LERD,
+en mode clair comme en mode sombre. La zone de saisie défile à l’intérieur du
+formulaire ; ses actions restent dans le pied de la même modal native.
+
 La page **Accès et partages** lit les sites et worktrees depuis l’API native.
 Utilisez **Actualiser**, recherchez un projet ou affichez aussi les partages
 fermés. Le numéro de port public et les restrictions de votre passerelle ne sont
@@ -26,6 +44,15 @@ L'inventaire utilise `GET .../shares`. L'édition explicite utilise
 `GET/POST .../policy?site=...&branch=...`, puis l'API native locale de LERD.
 
 ## Règles d'accès
+
+Un worktree peut **Utiliser les règles du projet parent** et suivre ses futurs
+changements. Son badge indique alors **Règles du parent**. Décocher prépare une
+exception, sans toucher au parent. Pour supprimer une exception existante,
+**Revenir aux règles du parent** ouvre une confirmation explicite. La révision
+réelle de la branche et celle du parent sont envoyées pour détecter une
+modification concurrente. Le retour à l’héritage ne transmet aucun identifiant
+ni mot de passe, et ne démarre aucun partage. Si le cœur ne fournit pas ce
+contrat, les commandes d’héritage restent masquées.
 
 Ouvrir les règles de la cible exacte, projet ou branche. Les modes proposés sont
 fermé, public sans restriction, IP, Basic Auth, IP **et** Basic Auth, ou IP **ou**

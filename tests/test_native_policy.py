@@ -6,7 +6,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from native_policy import PolicyError, clean_response, validate_update, native_policy
+from native_policy import PolicyError, clean_response, validate_update, native_policy, effective_summary
 
 
 def fixture():
@@ -16,6 +16,28 @@ def fixture():
 
 
 class PolicyTests(unittest.TestCase):
+    def test_inheritance_metadata_and_explicit_reset_are_validated(self):
+        parent=dict(fixture(),revision=9,mode='password',users=[dict(username='demo')])
+        inherited=clean_response(dict(parent,branch='feature-a',revision=0,inherited=True,parent_revision=9))
+        self.assertTrue(inherited['inherited'])
+        self.assertEqual(inherited['parent_revision'],9)
+        reset=validate_update(dict(site='demo',branch='feature-a',revision=3,parent_revision=9,inherit=True))
+        self.assertEqual(reset,dict(site='demo',branch='feature-a',revision=3,parent_revision=9,inherit=True))
+        for patch in (dict(branch=''),dict(parent_revision=True),dict(parent_revision=-1),dict(inherit='yes')):
+            with self.assertRaises(PolicyError):validate_update(dict(reset,**patch))
+
+    def test_summary_inherits_parent_but_keeps_explicit_worktree_override(self):
+        parent=dict(fixture(),revision=9,mode='ip',networks=['192.0.2.0/24'],denial_status=404)
+        own=dict(parent,branch='feature-a',revision=2,mode='closed')
+        policies={('demo',''):parent}
+        inherited=effective_summary('demo','feature-a',policies)
+        self.assertEqual((inherited['mode'],inherited['inherited'],inherited['revision'],inherited['parent_revision']),('ip',True,0,9))
+        self.assertNotIn('users',inherited)
+        policies[('demo','feature-a')]=own
+        custom=effective_summary('demo','feature-a',policies)
+        self.assertEqual((custom['mode'],custom['inherited'],custom['revision']),('closed',False,2))
+        self.assertEqual(effective_summary('unknown','topic',{})['mode'],'closed')
+
     def test_response_never_returns_credentials(self):
         data = fixture()
         data.update(password='sensible', password_hash='sensible')
