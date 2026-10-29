@@ -52,12 +52,14 @@ function sortGroups(groups,sortBy='name'){
  });
 }
 function nonEmptySecret(value){return typeof value==='string'&&value.length>0}
+function isInlineAccess(context){return Boolean(context&&context.intent==='access')}
 
-if(typeof module!=='undefined'&&module.exports)module.exports={groupShares,filterGroups,sortGroups,nonEmptySecret};
+if(typeof module!=='undefined'&&module.exports)module.exports={groupShares,filterGroups,sortGroups,nonEmptySecret,isInlineAccess};
 else (()=>{
 // L’interface n’applique jamais une politique avant validation explicite.
  const $=id=>document.getElementById(id);
  const context=lerd.context||{};
+ const contextIntent=isInlineAccess(context);
  const scopedSite=context.site||'';
  const scopedBranch=context.branch||'';
  let snapshot=null;
@@ -249,22 +251,35 @@ else (()=>{
     autoOpened=true;
     const row=data.shares.find(item=>item.project===scopedSite&&(item.branch||'')===scopedBranch&&item.visibility==='public'&&!item.paused);
     if(row)await openPolicy(row,null);
+    else showInlinePolicyStatus('Cette cible n’a plus de partage public actif. Fermez cette fenêtre puis relancez Protection depuis le menu du partage.');
    }
-  }catch(error){$('status').textContent=error.message||'Lecture impossible.'}
+  }catch(error){
+   $('status').textContent=error.message||'Lecture impossible.';
+   if(contextIntent)showInlinePolicyStatus('Impossible de charger la cible depuis LERD. Fermez cette fenêtre puis réessayez.');
+  }
   finally{$('refresh').disabled=false}
+ }
+ function showInlinePolicyStatus(message){
+  const dialog=$('policy-dialog');dialog.classList.add('inline-policy');dialog.open=true;
+  $('policy-status').textContent=message;$('apply-policy').disabled=true;$('cancel-policy').textContent='Fermer';
  }
  function clearCredentials(){
   for(const input of $('credentials').querySelectorAll('[data-password]'))input.value='';
   $('credentials').replaceChildren();
  }
- function closeDialog(){clearCredentials();$('dialog-error').textContent='';$('policy-dialog').close();if(returnFocus)returnFocus.focus()}
+ function closeDialog(){
+  clearCredentials();$('dialog-error').textContent='';
+  if(contextIntent){lerd.close();return}
+  $('policy-dialog').close();if(returnFocus)returnFocus.focus();
+ }
  async function openPolicy(row,trigger=returnFocus){
   returnFocus=trigger||document.activeElement;
   target={project:row.project,branch:row.branch||''};revision=null;
   $('target-label').textContent=target.project+(target.branch?' · '+displayBranch(row):' · site');
   $('policy-status').textContent='Lecture de la politique…';$('dialog-error').textContent='';$('apply-policy').disabled=true;
   $('mode').value='closed';$('networks').value='';$('rate').value='0';$('burst').value='60';renderUsers([]);clearCredentials();updateModeFields();
-  $('policy-dialog').showModal();
+  if(contextIntent){$('policy-dialog').classList.add('inline-policy');$('policy-dialog').open=true;$('cancel-policy').textContent='Fermer'}
+  else $('policy-dialog').showModal();
   try{
    const policy=parseResponse(await lerd.api(policyPath(target)));
    if(!policy||policy.version!==1||policy.site!==target.project||(policy.branch||'')!==target.branch||!modes.has(policy.mode)||!Number.isInteger(policy.revision)||policy.enforcement!=='native'||!Array.isArray(policy.networks)||!Array.isArray(policy.users)||!policy.rate||typeof policy.rate.requests_per_second!=='number'||typeof policy.rate.burst!=='number'||(policy.denial_status!==undefined&&![403,404].includes(policy.denial_status)))throw new Error('Contrat de politique non reconnu.');
@@ -325,6 +340,7 @@ else (()=>{
   $('apply-policy').disabled=true;$('dialog-error').textContent='Application en cours…';
   try{
    await lerd.api(policyPath(target),{method:'POST',body:payload});
+   if(contextIntent){clearCredentials();lerd.close();return}
    $('dialog-error').textContent='';$('confirm-dialog').close();$('policy-status').textContent='Politique enregistrée. Le statut effectif doit être confirmé par LERD.';
    // Le secret quitte le DOM dès la fin de la requête, succès ou erreur.
    clearCredentials();
@@ -351,8 +367,9 @@ else (()=>{
  $('confirm-apply').addEventListener('click',applyPolicy);
  $('back-to-policy').addEventListener('click',()=>{$('confirm-dialog').close();$('apply-policy').focus()});
  $('close-details').addEventListener('click',()=>{$('details-dialog').close();detailReturnFocus?.focus()});
- $('policy-dialog').addEventListener('cancel',clearCredentials);
+ $('policy-dialog').addEventListener('cancel',event=>{clearCredentials();if(contextIntent){event.preventDefault();lerd.close()}});
  $('context-note').hidden=!scopedSite;
  if(scopedSite)$('share-filter').value='all';
+ if(contextIntent){$('inventory-section').hidden=true;$('cancel-policy').textContent='Fermer'}
  refresh();
 })();

@@ -1,5 +1,5 @@
 // Plugin pages run sandboxed, so lerd.api reaches this plugin's own endpoints
-// through the dashboard. lerd.context holds the site and the dashboard's language.
+// through the dashboard. lerd.context holds the target and dashboard context.
 window.lerd = (() => {
   const params = new URLSearchParams(location.search);
   const pending = new Map();
@@ -29,6 +29,9 @@ window.lerd = (() => {
       // The dashboard's language, like en, ro or zh-TW, for a page that
       // translates itself.
       lang: params.get('lang') || 'en'
+    },
+    close() {
+      window.parent.postMessage({ type: 'lerd:close' }, '*');
     },
     api(path, { method = 'GET', body } = {}) {
       const id = ++next;
