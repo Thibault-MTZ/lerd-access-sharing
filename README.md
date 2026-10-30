@@ -15,6 +15,11 @@ Il n'est pas nécessaire d'installer le plugin pour donner un avis sur son appro
 
 Documentation : [utilisation](DOCS.md) · [premiers repères techniques](docs/TECHNIQUE.md).
 
+La [proposition UX commune](docs/UX-COMMUNE.md) prépare la cohérence avec le futur
+plugin [Archives de projets](https://github.com/Thibault-MTZ/lerd-project-archive).
+Les préférences d'affichage et de repli restent à développer ; cette documentation
+ne change pas les réglages de la version actuelle.
+
 Plugin natif local, fondé sur le squelette produit par `lerd plugin new`.
 Le dépôt est indépendant de toute configuration d’hébergement.
 
