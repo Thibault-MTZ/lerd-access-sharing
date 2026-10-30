@@ -1,5 +1,20 @@
 # Accès et partages LERD
 
+> **Bêta expérimentale — usage local personnel.** Ce plugin est en cours de
+> développement et n'est pas encore prêt pour une diffusion ou une utilisation
+> générale. Il n'a pas été soumis au catalogue ni à la communauté LERD comme
+> proposition officielle. Le dépôt public permet de suivre le travail ; il ne
+> constitue pas une version stable ni une recommandation pour la production.
+
+Si vous découvrez ce projet, **vos avis sont les bienvenus** : ergonomie,
+fonctionnement, intégration aux API LERD ou idées d'amélioration. Vous pouvez
+[ouvrir une issue](https://github.com/Thibault-MTZ/lerd-access-sharing/issues)
+pour partager un retour ou signaler un problème. Précisez votre version de LERD
+et les étapes utiles, sans joindre de mots de passe, jetons ou configuration privée.
+Il n'est pas nécessaire d'installer le plugin pour donner un avis sur son approche.
+
+Documentation : [utilisation](DOCS.md) · [premiers repères techniques](docs/TECHNIQUE.md).
+
 Plugin natif local, fondé sur le squelette produit par `lerd plugin new`.
 Le dépôt est indépendant de toute configuration d’hébergement.
 
@@ -17,7 +32,14 @@ interface. Ce début d'historique présente les jalons du prototype ; il ne pré
 pas être un relevé exhaustif de chaque modification locale. La suite est suivie
 dans Git avec des changements testés et cohérents.
 
-La version de développement **0.2.0-beta.3** ajoute la configuration des protections
+La version de développement **0.2.0-beta.4** ajoute une liste compacte avec filtres
+rapides, compteurs, recherche par domaine, tri et cartes automatiques sur mobile.
+La publication et les signaux d'exécution sont indépendants : pause, veille, PHP
+et workers proviennent exclusivement de `GET /api/sites`. Un champ absent reste
+non rapporté ; un moteur PHP actif peut être partagé et ne prouve pas la santé
+d'une application. Le plugin ne lit ni systemd, ni les fichiers internes de LERD.
+
+La version précédente a ajouté la configuration des protections
 par site et worktree : IP autorisées, Basic Auth, combinaison des deux, fermeture
 et limite de requêtes par client. Le proxy **LERD** applique les règles, y compris
 sur les ports directs ; le plugin ne dépend ni de Gestion ni d'un Caddy local.

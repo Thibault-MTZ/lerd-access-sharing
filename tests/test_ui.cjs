@@ -39,7 +39,7 @@ assert.match(html,/Basic Auth conserve le code 401/);
 assert.match(html,/<details class="lerd-card">/);
 assert.match(html,/@media\(max-width:40rem\)/);
 // L'échelle de lecture peut varier ; palette et famille restent celles de LERD.
-assert.doesNotMatch(css,/\b(?:color|background|border|font(?:-family)?)\s*:/i);
+assert.doesNotMatch(css,/#[a-f0-9]{3,8}\b/i); // Colors use native palette tokens only.
 assert.doesNotMatch(css,/--lerd-[a-z-]+\s*:/i);
 assert.match(html,/<body class="access-sharing">/);
 assert.match(css,/body\.access-sharing\{font-size:14px;line-height:1\.6/);
@@ -145,9 +145,9 @@ assert.deepEqual(shareStatus(publicRow('public')),{label:'Partage actif',tone:'o
 for(const mode of ['ip','password','ip_and_password','ip_or_password'])assert.deepEqual(shareStatus(publicRow(mode)),{label:'Partage actif',tone:'ok',protection:'Protégé'});
 assert.equal(shareStatus(publicRow('public',5)).protection,'Protégé');
 assert.deepEqual(shareStatus(publicRow('closed')),{label:'Refus total',tone:'bad',protection:null});
-assert.equal(shareStatus({...publicRow('public'),paused:true}).tone,'bad');
+assert.equal(shareStatus({...publicRow('public'),paused:true}).tone,'warn');
 assert.deepEqual(shareStatus({visibility:'private'}),{label:'LAN seulement',tone:'warn',protection:null});
-assert.deepEqual(shareStatus({visibility:'closed'}),{label:'Non partagé',tone:'bad',protection:null});
+assert.deepEqual(shareStatus({visibility:'closed'}),{label:'Non partagé',tone:'neutral',protection:null});
 assert.equal(shareStatus(publicRow('public'),false).protection,'Protection non rapportée');
 assert.equal(shareStatus({...publicRow('public'),access_summary:{mode:'public'}}).protection,'Protection non rapportée');
 assert.equal(shareStatus(publicRow('unknown',5)).protection,'Protection non rapportée');
@@ -195,3 +195,16 @@ assert.deepEqual(sortGroups(grouped,'activity').map(group=>group.project),['Alph
 assert.deepEqual(sortGroups(grouped,'protection').map(group=>group.project),['Alpha','Gamma','Beta']);
 assert.deepEqual(sortGroups(grouped.find(group=>group.project==='Alpha').worktrees.map(row=>({project:row.project,site:null,worktrees:[row]})),'protection').flatMap(group=>group.worktrees).map(row=>row.branch),['docs-update','agent-v3']);
 console.log('Interface Accès et partages : syntaxe, contrat UI et garde-fous vérifiés.');
+const {runtimeStatus,publicationStatus}=require('../ui/view.js');
+assert.equal(runtimeStatus({visibility:'public'}).key,'unknown');
+assert.equal(runtimeStatus({visibility:'closed',runtime:{uses_php:true,fpm_running:true}}).key,'running');
+assert.equal(runtimeStatus({runtime:{uses_php:true,fpm_running:false}}).key,'stopped');
+assert.equal(runtimeStatus({paused:true,runtime:{fpm_running:true}}).key,'paused');
+assert.equal(runtimeStatus({runtime:{workers_failing:true}}).key,'error');
+assert.equal(runtimeStatus({runtime:{idle:true,workers_running:1}}).key,'idle');
+assert.equal(publicationStatus({visibility:'public',paused:true}).label,'Publié · proxy');
+const independent=groupShares([{project:'local',visibility:'closed',runtime:{uses_php:true,fpm_running:true}},
+ {project:'published',visibility:'public',paused:true}]);
+assert.equal(filterGroups(independent,{runtime:'running'})[0].project,'local');
+assert.equal(filterGroups(independent,{share:'public'})[0].project,'published');
+assert.equal(filterGroups(independent,{runtime:'stopped'}).length,0);

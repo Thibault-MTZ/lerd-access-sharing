@@ -1,3 +1,18 @@
+function runtimeStatus(row){
+ const r=row.runtime||{};
+ if(r.paused===true||row.paused)return {key:'paused',label:'En pause',tone:'warn'};
+ if(r.workers_failing)return {key:'error',label:'Service en erreur',tone:'bad'};
+ if(r.idle)return {key:'idle',label:'En veille',tone:'warn'};
+ if(r.workers_running>0)return {key:'running',label:'Services actifs',tone:'ok'};
+ if(r.uses_php===true&&r.fpm_running===true)return {key:'running',label:'PHP actif',tone:'ok'};
+ if(r.uses_php===true&&r.fpm_running===false)return {key:'stopped',label:'PHP arrêté',tone:'neutral'};
+ return {key:'unknown',label:'Non rapporté',tone:'neutral'};
+}
+function publicationStatus(row){
+ if(row.visibility==='public')return {label:'Publié · proxy',tone:'ok'};
+ if(row.visibility==='private')return {label:'Partagé · LAN',tone:'accent'};
+ return {label:'Non publié',tone:'neutral'};
+}
 function groupShares(rows){
  const groups=new Map();
  for(const row of rows||[]){
@@ -15,14 +30,15 @@ function filterGroups(groups,options={}){
  const rowMatch=(row,projectMatches)=>{
   if(options.site&&row.project!==options.site)return false;
   if(options.site&&(row.branch||'')!==(options.branch||''))return false;
+  if(options.runtime&&options.runtime!=='all'&&runtimeStatus(row).key!==options.runtime)return false;
   if(options.share==='active'&&(row.paused||row.visibility==='closed'))return false;
-  if(options.share==='public'&&(row.paused||row.visibility!=='public'))return false;
-  if(options.share==='lan'&&(row.paused||row.visibility!=='private'))return false;
+  if(options.share==='public'&&row.visibility!=='public')return false;
+  if(options.share==='lan'&&row.visibility!=='private')return false;
   if(options.share==='paused'&&!row.paused)return false;
-  if(options.share==='stopped'&&(row.paused||row.visibility!=='closed'))return false;
+  if(options.share==='stopped'&&row.visibility!=='closed')return false;
   const policy=row.visibility==='private'?'outside':!nativeAvailable?'unavailable':row.access_policy_reported&&row.access_summary?.mode?row.access_summary.mode:'unreported';
   if(options.protection&&options.protection!=='all'&&options.protection!==policy)return false;
-  return !query||projectMatches||[row.project,row.branch,row.git_branch].filter(Boolean).join(' ').toLocaleLowerCase().includes(query);
+  return !query||projectMatches||[row.project,row.branch,row.git_branch,row.domain,row.url,row.framework].filter(Boolean).join(' ').toLocaleLowerCase().includes(query);
  };
  const result=[];
  for(const group of groups||[]){
@@ -55,8 +71,8 @@ function nonEmptySecret(value){return typeof value==='string'&&value.length>0}
 function isInlineAccess(context){return Boolean(context&&context.intent==='access')}
 
 function shareStatus(row,nativeAvailable=true){
- if(row.paused)return {label:'En pause',tone:'bad',protection:null};
- if(row.visibility==='closed')return {label:'Non partagé',tone:'bad',protection:null};
+ if(row.paused)return {label:'En pause',tone:'warn',protection:null};
+ if(row.visibility==='closed')return {label:'Non partagé',tone:'neutral',protection:null};
  if(row.visibility==='private')return {label:'LAN seulement',tone:'warn',protection:null};
  if(row.visibility!=='public')return {label:'État inconnu',tone:'warn',protection:null};
  const summary=nativeAvailable&&row.access_policy_reported?row.access_summary:null;
@@ -86,7 +102,7 @@ function inheritanceLabel(row){
  return row.access_summary.inherited?'Règles du parent':'Règles personnalisées';
 }
 
-if(typeof module!=='undefined'&&module.exports)module.exports={groupShares,filterGroups,sortGroups,nonEmptySecret,isInlineAccess,shareStatus,activeShareCount,projectInitiallyCollapsed,policyInheritance,inheritanceResetPayload,inheritanceLabel};
+if(typeof module!=='undefined'&&module.exports)module.exports={runtimeStatus,publicationStatus,groupShares,filterGroups,sortGroups,nonEmptySecret,isInlineAccess,shareStatus,activeShareCount,projectInitiallyCollapsed,policyInheritance,inheritanceResetPayload,inheritanceLabel};
 else (()=>{
 // L’interface n’applique jamais une politique avant validation explicite.
  const $=id=>document.getElementById(id);
@@ -140,6 +156,7 @@ else (()=>{
    const detail=rate.requests_per_second>0?'Limite '+rate.requests_per_second+' req/s'+(typeof rate.burst==='number'?' · burst '+rate.burst:''):'Limite désactivée';
    cell.append(text('div',detail,'lerd-muted'));
   }
+  const origin=inheritanceLabel(row);if(origin)cell.append(text('div',origin,'lerd-muted'));
   return cell;
  }
  function parseResponse(value){return typeof value==='string'?JSON.parse(value):value}
@@ -271,59 +288,75 @@ else (()=>{
   const configure=document.createElement('button');configure.type='button';configure.textContent='Protection';configure.setAttribute('aria-label','Configurer la protection pour '+row.project+(row.branch?' · '+displayBranch(row):''));configure.addEventListener('click',()=>openPolicy(row,configure));
   actions.append(details,configure);return actions;
  }
+ function isFiltering(){return Boolean($('search').value.trim()||$('share-filter').value!=='all'||$('runtime-filter').value!=='all'||$('protection-filter').value!=='all')}
  function projectHeading(group){
   const heading=text('div','','project-heading');const targets=[group.site,...group.worktrees].filter(Boolean);
   const toggle=document.createElement('button');toggle.type='button';toggle.textContent=(collapsedProjects.has(group.project)?'▸ ':'▾ ')+group.project;toggle.setAttribute('aria-expanded',String(!collapsedProjects.has(group.project)));
+  if(isFiltering()){toggle.textContent='▾ '+group.project;toggle.setAttribute('aria-expanded','true');toggle.disabled=true}
   toggle.addEventListener('click',()=>{if(collapsedProjects.has(group.project))collapsedProjects.delete(group.project);else collapsedProjects.add(group.project);render()});
   const active=activeShareCount(group,snapshot.native_access_available===true);
   const hasPublic=targets.some(row=>shareStatus(row,snapshot.native_access_available===true).label==='Partage actif');
-  heading.append(toggle,text('span',active+' actif(s) / '+targets.length+' cible(s)'+(group.worktrees.length?' · '+group.worktrees.length+' worktree(s)':''),'lerd-pill '+(active?(hasPublic?'ok':'warn'):'bad')));return heading;
+  heading.append(toggle,text('span',active+' partage(s) actif(s)'+(group.worktrees.length?' · '+group.worktrees.length+' branche(s)':''),'lerd-pill '+(active?(hasPublic?'ok':'accent'):'neutral')));
+  if(group.site){const state=runtimeStatus(group.site);heading.append(text('span',state.label,'lerd-pill '+state.tone))}return heading;
  }
  function appendShareCard(row,container){
   const card=text('article','','lerd-card target-card');
-  card.append(text('h3',row.kind==='worktree'?displayBranch(row):'Site principal'),statusBadges(row),targetAddress(row));
+  card.dataset.runtime=runtimeStatus(row).key;card.dataset.publication=row.visibility;
+  const publication=publicationStatus(row);
+  card.append(text('h3',row.kind==='worktree'?displayBranch(row):'Site principal'),text('span',publication.label,'lerd-pill '+publication.tone),targetAddress(row));
+  const runtimeState=runtimeStatus(row);card.append(text('span',runtimeState.label,'lerd-pill '+runtimeState.tone));
   const runtime=[row.framework,row.php_version?'PHP '+row.php_version:null,row.node_version?'Node.js '+row.node_version:null].filter(Boolean);
   if(runtime.length)card.append(text('p',runtime.join(' · '),'lerd-muted'));
   card.append(text('p',protectionDescription(row),'lerd-muted'),targetActions(row));container.append(card);
  }
  function appendShareRow(row){
   const tr=document.createElement('tr');const identity=document.createElement('td');
+  tr.dataset.runtime=runtimeStatus(row).key;tr.dataset.publication=row.visibility;
   identity.className=row.kind==='worktree'?'target-worktree':'target-site';
   identity.append(text('strong',row.kind==='worktree'?'↳ '+displayBranch(row):'Site principal'));
   if(row.kind!=='worktree'&&displayBranch(row))identity.append(text('div',displayBranch(row),'lerd-muted'));
+  if(row.url)identity.append(targetAddress(row));
+  const runtime=text('td','','runtime-cell');const runtimeState=runtimeStatus(row);
+  runtime.append(text('span',runtimeState.label,'lerd-pill '+runtimeState.tone));
   const state=document.createElement('td');
-  state.append(statusBadges(row));
-  const address=document.createElement('td');
-  address.append(targetAddress(row));
-  const port=text('td',row.port_reported?row.port:row.visibility==='public'?'Non exposé par l’API':'—','lerd-muted');
+  const publication=publicationStatus(row);state.append(text('span',publication.label,'lerd-pill '+publication.tone));
   const protection=protectionCell(row);
   const actions=document.createElement('td');
-  actions.append(targetActions(row));tr.append(identity,state,address,port,protection,actions);$('rows').append(tr);
+  actions.append(targetActions(row));tr.append(identity,runtime,state,protection,actions);$('rows').append(tr);
  }
  function render(){
   if(!snapshot)return;
   const groups=sortGroups(filterGroups(groupShares(snapshot.shares),{
-   query:$('search').value,share:$('share-filter').value,protection:$('protection-filter').value,
+   query:$('search').value,share:$('share-filter').value,runtime:$('runtime-filter').value,protection:$('protection-filter').value,
    nativeAccessAvailable:snapshot.native_access_available,site:scopedSite,branch:scopedBranch
   }),$('sort-by').value);
-  const cards=$('view-mode').value==='cards';$('table-view').hidden=cards;$('cards-view').hidden=!cards;
+  const cards=$('view-mode').value==='cards'||window.matchMedia('(max-width:760px)').matches;$('table-view').hidden=cards;$('cards-view').hidden=!cards;
+  for(const id of ['expand-all','collapse-all']){$(id).disabled=isFiltering();$(id).title=isFiltering()?'Les résultats filtrés sont dépliés automatiquement':''}
   $('rows').replaceChildren();$('cards-view').replaceChildren();
   let visibleTargets=0;
   for(const group of groups){
    const groupTargets=[group.site,...group.worktrees].filter(Boolean);
-   const isCollapsed=collapsedProjects.has(group.project);
+   const filtering=isFiltering();
+   const isCollapsed=!filtering&&collapsedProjects.has(group.project);
    if(cards){
     const project=text('section','','lerd-card project-card');project.append(projectHeading(group));
     if(!isCollapsed){const grid=text('div','','target-grid');for(const row of groupTargets){appendShareCard(row,grid);visibleTargets++}project.append(grid)}
     $('cards-view').append(project);
    }else{
-    const header=document.createElement('tr');header.className='lerd-row project-group';const headerCell=document.createElement('td');headerCell.colSpan=6;
+    const header=document.createElement('tr');header.className='project-group';const headerCell=document.createElement('td');headerCell.colSpan=5;
     headerCell.append(projectHeading(group));header.append(headerCell);$('rows').append(header);
     if(!isCollapsed)for(const row of groupTargets){appendShareRow(row);visibleTargets++}
    }
   }
   $('empty').hidden=groups.length!==0;
-  $('count').textContent=groups.length+' projet(s) · '+visibleTargets+' cible(s) affichée(s)';
+  const matches=groups.reduce((sum,g)=>sum+g.worktrees.length+Number(Boolean(g.site)),0);
+  $('count').textContent=groups.length+' projets · '+matches+' cibles'+(visibleTargets<matches?' · '+(matches-visibleTargets)+' repliées':'');
+  for(const button of $('quick-filters').querySelectorAll('button')){
+   const key=button.dataset.filter;
+   const count=snapshot.shares.filter(row=>key==='all'||key==='public'&&row.visibility==='public'||key==='private'&&row.visibility==='private'||key==='closed'&&row.visibility==='closed'||key==='paused'&&runtimeStatus(row).key==='paused').length;
+   button.querySelector('span').textContent=count;
+   button.setAttribute('aria-pressed',String(key==='paused'?$('runtime-filter').value==='paused':$('runtime-filter').value==='all'&&$('share-filter').value===(key==='private'?'lan':key==='closed'?'stopped':key)));
+  }
  }
  async function refresh(){
   $('refresh').disabled=true;$('status').textContent='Lecture de l’état natif…';
@@ -448,6 +481,10 @@ else (()=>{
  }
  $('refresh').addEventListener('click',refresh);
  $('search').addEventListener('input',render);
+ $('runtime-filter').addEventListener('change',render);
+ $('quick-filters').addEventListener('click',event=>{const button=event.target.closest('button[data-filter]');if(!button)return;const key=button.dataset.filter;$('share-filter').value=key==='paused'?'all':key==='private'?'lan':key==='closed'?'stopped':key;$('runtime-filter').value=key==='paused'?'paused':'all';render()});
+ $('reset-filters').addEventListener('click',()=>{$('search').value='';for(const id of ['share-filter','runtime-filter','protection-filter'])$(id).value='all';render()});
+ window.matchMedia('(max-width:760px)').addEventListener('change',render);
  $('share-filter').addEventListener('change',render);
  $('protection-filter').addEventListener('change',render);
  $('sort-by').addEventListener('change',render);

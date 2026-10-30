@@ -42,34 +42,68 @@
   .details-grid{display:grid;grid-template-columns:minmax(8rem,.7fr) minmax(0,1.3fr);gap:.5rem 1rem}
   .details-grid dd{min-width:0;margin:0;overflow-wrap:anywhere}
   @media(max-width:40rem){.credential-row,.rate-grid,.details-grid{grid-template-columns:1fr}.table-scroll table{min-width:38rem}.dialog-actions button{flex:1 1 100%}}
+  /* Native palette tokens: adapt to every LERD light/dark theme. */
+  .inventory-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+  .inventory-heading h1,.inventory-heading p{margin:0}.inventory-heading p{margin-top:.25rem}
+  #quick-filters{display:flex;flex-wrap:wrap;gap:.5rem;margin-block:1rem}
+  #quick-filters button{display:flex;align-items:center;gap:.6rem;border-radius:999px}
+  #quick-filters button span{font-variant-numeric:tabular-nums;opacity:.75}
+  #quick-filters [aria-pressed="true"]{background:var(--lerd-accent);color:var(--lerd-on-accent)}
+  .inventory-toolbar{display:grid;grid-template-columns:minmax(15rem,2fr) repeat(3,minmax(9rem,1fr));gap:.5rem}
+  .inventory-toolbar input,.inventory-toolbar select{width:100%;min-width:0;box-sizing:border-box}
+  .list-options{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-top:.75rem}
+  #count{margin-left:auto}#status{margin-block:.6rem;font-size:12px}
+  .table-scroll table{width:100%;table-layout:fixed}
+  .table-scroll th:nth-child(1){width:32%}.table-scroll th:nth-child(2){width:14%}
+  .table-scroll th:nth-child(3){width:14%}.table-scroll th:nth-child(4){width:20%}
+  .table-scroll th:nth-child(5){width:20%}
+  .table-scroll th,.table-scroll td{padding:.65rem;white-space:normal;vertical-align:middle;overflow-wrap:anywhere}
+  .table-scroll .project-group td{padding:.45rem .65rem;background:var(--lerd-bg)}
+  .project-heading{margin:0;gap:.5rem}.project-heading button{background:transparent;border:0;padding:.25rem;font-weight:650;text-align:left}
+  .project-heading .lerd-pill{font-weight:400;text-transform:none;letter-spacing:normal}
+  .project-heading button:disabled{opacity:1}
+  .target-link{display:block;min-height:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:.3rem;font-size:12px}
+  .target-actions{flex-wrap:wrap;gap:.3rem}.target-actions button{padding-inline:.6rem}
+  .table-scroll .target-site,.table-scroll .target-worktree{padding-left:1.25rem}
+  .target-card[data-publication="public"],tr[data-publication="public"]{background:color-mix(in srgb,var(--lerd-ok) 6%,transparent)}
+  .target-card[data-runtime="paused"],tr[data-runtime="paused"],.target-card[data-runtime="idle"],tr[data-runtime="idle"]{background:color-mix(in srgb,var(--lerd-warn) 7%,transparent)}
+  .target-card[data-runtime="error"],tr[data-runtime="error"]{background:color-mix(in srgb,var(--lerd-bad) 7%,transparent)}
+  .lerd-pill.neutral{color:var(--lerd-text-muted);background:color-mix(in srgb,var(--lerd-text-muted) 8%,transparent)}
+  .target-card .lerd-pill{width:fit-content}#cards-view{gap:.65rem}.project-card{padding:.65rem}.target-grid{margin-top:.5rem;gap:.6rem}
+  @media(max-width:1100px){.inventory-toolbar{grid-template-columns:repeat(3,minmax(0,1fr))}#search{grid-column:1/-1}.list-options{gap:.4rem}}
+  @media(max-width:760px){.inventory-toolbar{grid-template-columns:1fr}#count{margin-left:0;flex-basis:100%}.target-grid{grid-template-columns:1fr}.project-heading button{flex:1}.project-heading .lerd-pill{font-size:11px}.list-options label{display:none}.list-options select{max-width:48%}}
+  :focus-visible{outline:2px solid var(--lerd-accent);outline-offset:3px}
  </style>
 </head>
 <body class="access-sharing">
  <section id="inventory-section" class="lerd-section">
-  <h1>Accès et partages</h1>
-  <p class="lerd-muted">État des partages natifs et protections par site ou worktree. Les changements ne sont enregistrés qu’après votre validation.</p>
-  <p class="lerd-muted">« Partage actif » décrit le proxy LERD, sans confirmer la santé de l’application. Vert : actif ; jaune : protégé ; orange : LAN seulement ; rouge : fermé ou arrêté.</p>
+  <div class="inventory-heading"><div><h1>Accès et partages</h1><p class="lerd-muted">Vos projets, leurs publications et leurs protections.</p></div><button id="refresh">Actualiser</button></div>
+  <nav id="quick-filters" aria-label="Filtres rapides des cibles"><button data-filter="all" aria-pressed="true">Toutes <span>—</span></button><button data-filter="public">Publiées <span>—</span></button><button data-filter="private">LAN <span>—</span></button><button data-filter="paused">En pause <span>—</span></button><button data-filter="closed">Non publiées <span>—</span></button></nav>
   <div class="lerd-toolbar inventory-toolbar">
-   <button id="refresh" class="primary">Actualiser</button>
-   <input id="search" type="search" placeholder="Projet ou branche" aria-label="Rechercher un projet ou une branche">
+   <input id="search" type="search" placeholder="Rechercher un projet, une branche, un domaine…" aria-label="Rechercher un projet ou une branche">
    <select id="share-filter" aria-label="Filtrer par état du partage">
-    <option value="all" selected>Tous les états</option><option value="active">Partages actifs</option><option value="public">Public</option><option value="lan">LAN</option><option value="paused">En pause</option><option value="stopped">Arrêtés</option>
+    <option value="all" selected>Tous les états de publication</option><option value="active">Partages actifs</option><option value="public">Publié · proxy</option><option value="lan">Partagé · LAN</option><option value="stopped">Non publié</option>
    </select>
+   <select id="runtime-filter" aria-label="Filtrer par état LERD"><option value="all">Tous les états LERD</option><option value="running">PHP / services actifs</option><option value="paused">En pause</option><option value="idle">En veille</option><option value="stopped">PHP arrêté</option><option value="error">Service en erreur</option><option value="unknown">État non rapporté</option></select>
    <select id="protection-filter" aria-label="Filtrer par protection">
     <option value="all">Toutes les protections</option><option value="closed">Refus total</option><option value="public">Sans contrôle</option><option value="ip">Filtrage IP</option><option value="password">Compte requis</option><option value="ip_and_password">IP + compte</option><option value="ip_or_password">IP ou compte</option><option value="unreported">Non rapportée</option><option value="unavailable">Indisponible</option><option value="outside">Hors portée</option>
    </select>
+  </div>
+  <div class="lerd-toolbar list-options">
    <label for="sort-by">Trier par</label>
-   <select id="sort-by"><option value="name">Nom</option><option value="activity">Activité (actifs d’abord)</option><option value="protection">Protection</option></select>
+   <select id="sort-by"><option value="activity">Activité (actifs d’abord)</option><option value="name">Nom</option><option value="protection">Protection</option></select>
    <label for="view-mode">Affichage</label><select id="view-mode"><option value="table">Arborescence</option><option value="cards">Cartes</option></select>
    <button id="expand-all" type="button">Tout déplier</button><button id="collapse-all" type="button">Tout replier</button>
+   <button id="reset-filters" type="button">Effacer les filtres</button>
    <span id="count" class="lerd-pill">Chargement…</span>
   </div>
   <p id="status" role="status" class="lerd-muted"></p>
-  <div id="table-view" class="table-scroll lerd-card flush"><table aria-label="Arborescence des projets et worktrees"><thead><tr><th>Projet / branche</th><th>Partage</th><th>URL</th><th>Port</th><th>Protection native</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+  <div id="table-view" class="table-scroll lerd-card flush"><table aria-label="Arborescence des projets et worktrees"><thead><tr><th>Projet / branche et adresse</th><th>État LERD</th><th>Publication</th><th>Protection native</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
   <div id="cards-view" hidden></div>
-  <p id="empty" class="lerd-empty" hidden>Aucun partage ne correspond.</p>
+  <p id="empty" class="lerd-empty" hidden>Aucun résultat. Essayez un autre filtre ou effacez la recherche.</p>
   <p id="context-note" class="lerd-muted" hidden>Onglet du site : la liste est limitée à cette cible.</p>
   <details class="lerd-card"><summary class="lerd-label">Portée des protections</summary>
+   <p class="lerd-muted">L’état LERD indique la pause, la veille ou les processus rapportés par l’API, sans confirmer la santé de l’application. Un projet peut fonctionner sans être publié. « PHP actif » peut désigner un moteur partagé ; un état absent reste non rapporté. Vert : actif ou publié ; ambre : pause / veille ; gris : arrêté ou non publié ; rouge : erreur de service.</p>
    <p class="lerd-muted">« Public » décrit le partage natif, pas l’absence de protection. Les règles protègent les ports publics directs de LERD (9300 et suivants) et son entrée commune native. Les partages LAN et les chemins qui ne passent pas par ce proxy natif restent hors de leur portée.</p>
    <p class="lerd-muted">Une règle affichée comme préparée sur un partage arrêté n’est pas appliquée à un accès actif.</p>
   </details>

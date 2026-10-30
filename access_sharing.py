@@ -71,6 +71,15 @@ def normalize(sites):
             'port':port(node.get('public_port')) if public else lan,
             'port_reported':bool(node.get('public_port')) if public else bool(lan),
             'paused':bool(site.get('paused',False)),
+            # Signals supplied by /api/sites, never inferred from sharing or URLs.
+            'runtime': {
+                'paused': site.get('paused') if type(site.get('paused')) is bool else None,
+                'idle': node.get('idle', False) is True,
+                'uses_php': site.get('uses_php') if type(site.get('uses_php')) is bool else None,
+                'fpm_running': node.get('fpm_running') if type(node.get('fpm_running')) is bool else None,
+                'workers_running': sum(w.get('running') is True for w in (node.get('framework_workers') or []) if isinstance(w, dict)),
+                'workers_failing': any(w.get('failing') is True or w.get('unreachable') is True for w in (node.get('framework_workers') or []) if isinstance(w, dict)),
+            },
             'access_policy_reported':False})
     for site in sites:
         if not isinstance(site,dict):raise ReadError('Format de site non reconnu.')

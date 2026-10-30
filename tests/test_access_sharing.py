@@ -9,6 +9,18 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from access_sharing import ReadError,normalize,read_native,safe_url
 
 class AccessSharingTests(unittest.TestCase):
+ def test_runtime_does_not_infer_running_from_publication(self):
+  row,=normalize([{'name':'demo','public_shared':True}])['shares']
+  self.assertIsNone(row['runtime']['fpm_running'])
+  self.assertIsNone(row['runtime']['uses_php'])
+ def test_runtime_worktree_does_not_borrow_parent_fpm(self):
+  rows=normalize([{'name':'demo','uses_php':True,'fpm_running':True,'paused':False,
+    'framework_workers':[{'running':True}],
+    'worktrees':[{'branch':'v2','idle':True,'framework_workers':None}]}])['shares']
+  self.assertTrue(rows[0]['runtime']['fpm_running'])
+  self.assertIsNone(rows[1]['runtime']['fpm_running'])
+  self.assertEqual(rows[1]['runtime']['workers_running'],0)
+  self.assertTrue(rows[1]['runtime']['idle'])
  def test_suggested_url_is_not_an_active_share(self):
   row,=normalize([{'name':'demo','public_share_url':'https://demo.example.invalid'}])['shares']
   self.assertEqual(row['visibility'],'closed');self.assertIsNone(row['url'])

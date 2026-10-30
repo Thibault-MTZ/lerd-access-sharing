@@ -1,5 +1,10 @@
 # Accès et partages
 
+**Statut : bêta expérimentale pour usage local personnel, non prête pour une
+diffusion générale et non soumise à la communauté LERD.** Les retours sont
+bienvenus via les [issues du dépôt](https://github.com/Thibault-MTZ/lerd-access-sharing/issues).
+Voir aussi les [repères techniques](docs/TECHNIQUE.md).
+
 Le plugin affiche les partages natifs LERD et configure les protections du proxy
 sur un cœur LERD compatible avec `/api/share-access`. Sans cette capacité,
 l'édition est indisponible. Il ne démarre ou n'arrête aucun partage.
@@ -21,12 +26,20 @@ et worktrees connus, indentés sous leur projet. Les projets avec un partage act
 commencent ouverts ; les autres commencent repliés. **Tout déplier** et **Tout
 replier** permettent de parcourir l’ensemble. Choisir **Cartes** conserve les
 filtres et les replis ; aucune branche n’est créée par cette vue.
-Chaque projet reste séparé de ses voisins. Un badge vert indique un **Partage
-actif**, accompagné d’un badge jaune **Protégé** si une règle IP, un compte ou une
-limite de requêtes s’applique. Le LAN seul est orange ; un partage arrêté, en
-pause ou explicitement fermé est rouge. Une protection inconnue reste signalée
-comme non rapportée. Ces badges décrivent le proxy et ses règles, pas un test de
-santé de l’application ni une garantie d’accès depuis Internet.
+Chaque projet reste séparé de ses voisins. La version 0.2.0-beta.4 distingue
+**État LERD**, **Publication** et **Protection native**. Vert indique une publication
+ou des processus actifs ; ambre indique pause ou veille ; gris indique un état
+arrêté, non publié ou non rapporté ; rouge signale une erreur de service.
+Une publication peut être protégée par IP ou par compte. Ces indications ne
+prouvent ni la santé de l'application ni son accessibilité depuis Internet.
+
+Les filtres rapides comptent les cibles, sites et worktrees compris. Publication,
+état LERD et protection se combinent avec une recherche par projet, branche,
+domaine ou framework. Les résultats filtrés sont automatiquement dépliés ;
+**Effacer les filtres** retrouve la liste complète et ses replis. Les filtres
+restent en place pendant **Actualiser**, mais ne sont pas enregistrés entre
+deux ouvertures du plugin. Le tri initial place les partages actifs en premier.
+Sous 760 px, la liste passe automatiquement en cartes.
 
 Le texte courant utilise une échelle de 14 px, les informations secondaires
 12 px et les contrôles au moins 36 px de haut. La police, les couleurs, les
